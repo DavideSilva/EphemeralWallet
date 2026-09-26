@@ -1,4 +1,7 @@
 node_modules/
+apps/web/dist/
+package-lock.json
+soljson-latest.js
 out/
 cache/
 broadcast/
