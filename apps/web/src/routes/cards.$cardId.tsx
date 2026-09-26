@@ -150,12 +150,12 @@ function Limits({ card }: { card: Card }) {
 }
 
 /** Held purchases still waiting for the owner. The newest row per request decides its state. */
-function pendingApprovals(activity: Activity[]): Held[] {
-  const latest = new Map<string, Held>();
+function pendingApprovals(activity: Activity[]): (Activity & { held: Held })[] {
+  const latest = new Map<string, Activity & { held: Held }>();
   for (const item of activity) {
-    if (item.held && !latest.has(item.held.requestKey)) latest.set(item.held.requestKey, item.held);
+    if (item.held && !latest.has(item.held.requestKey)) latest.set(item.held.requestKey, item as Activity & { held: Held });
   }
-  return [...latest.values()].filter(held => held.state === "waiting");
+  return [...latest.values()].filter(item => item.held.state === "waiting");
 }
 
 function ApprovalRequests({ card, activity }: { card: Card; activity: Activity[] }) {
@@ -163,14 +163,14 @@ function ApprovalRequests({ card, activity }: { card: Card; activity: Activity[]
   if (pending.length === 0) return null;
   return (
     <div className="space-y-3">
-      {pending.map(held => (
-        <ApprovalRequest key={held.requestKey} held={held} card={card} />
+      {pending.map(item => (
+        <ApprovalRequest key={item.id} attempt={item.id} held={item.held} card={card} />
       ))}
     </div>
   );
 }
 
-function ApprovalRequest({ held, card }: { held: Held; card: Card }) {
+function ApprovalRequest({ attempt, held, card }: { attempt: string; held: Held; card: Card }) {
   const queryClient = useQueryClient();
   const passkey = card.approvalBy === "passkey";
   const stored = passkey ? storedPasskey() : null;
@@ -178,7 +178,8 @@ function ApprovalRequest({ held, card }: { held: Held; card: Card }) {
   // Read ahead so the click goes straight to Touch ID (Safari only allows the prompt right after a click), and
   // refreshed every few minutes so the signed expiry never goes stale while the page stays open.
   const challenge = useQuery({
-    queryKey: ["approval-challenge", held.requestKey],
+    // Per held attempt: the same purchase held again after an approval has a new nonce, so a new challenge.
+    queryKey: ["approval-challenge", attempt],
     queryFn: () => approvalChallenge(held),
     enabled: passkey && !wrongPasskey,
     staleTime: 5 * 60_000,
