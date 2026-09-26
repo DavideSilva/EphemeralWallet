@@ -21,37 +21,32 @@ npm run demo
 
 1. starts Anvil on `127.0.0.1:8545`
 2. installs `forge-std` if needed
-3. deploys `MissionFactory` and `DemoShop`
-4. injects their addresses into the Vite app
+3. deploys `MissionFactory`, `ReusableWalletFactory` and three demo merchants (Café, Ticket office, Tip jar)
+4. passes their addresses to the web app
 5. starts the UI at `http://localhost:5173`
 
-Open the UI. It uses Anvil's first unlocked account on the local chain (chain ID 31337).
+The UI signs as Anvil account #0 (no wallet popups) and issues cards to Anvil account #1 by default. Stop everything with Ctrl-C.
 
-The default agent address in the UI is Anvil account #1. Create a mission with a budget of at least `0.001 ETH`. The UI waits for the transaction, extracts the new mission-wallet address from `MissionCreated`, and prints the command for the agent.
+### Cards
 
-Run that command in a second terminal:
+A card lets one agent spend at one merchant, up to a budget, until it expires.
 
-```bash
-npm run agent -- <MISSION_WALLET>
-```
+- **One-time card**: its own `EphemeralMissionWallet`, funded with the budget. One purchase, then it's used up; cancelling it refunds the balance.
+- **Multi-use card**: a permission on your `ReusablePermissionWallet` account, which is opened the first time you issue one. The agent can buy until the budget or uses run out; cancelling revokes only that card.
 
-The agent reads the constraints from the mission wallet, constructs a purchase of `coffee` from the allowed `DemoShop`, validates the target/budget/expiry locally, and executes it through Anvil's unlocked agent account.
+### Give an agent a task
 
-Running the same command a second time should fail because the authority has already been consumed.
-
-### Reusable wallet mode
-
-Switch to **Reusable wallet** in the UI. Create and fund the wallet once, then add a permission with its own agent, target, cumulative budget, expiry, and maximum uses.
-
-The UI prints:
+Each card's page shows the command to run in a second terminal:
 
 ```bash
-npm run permission-agent -- <REUSABLE_WALLET> <PERMISSION_ID>
+npm run agent -- <card> "buy two cinema tickets for tonight"
 ```
 
-Run it multiple times up to the permission's max-use/max-spend limits. You can create additional permissions on the same wallet without affecting existing ones.
+`<card>` is the wallet address for a one-time card, or `<wallet>-<id>` for a multi-use card. The agent reads the merchant's on-chain catalog, plans the order, and sends it with the task as the on-chain `memo`.
 
-Stop `npm run demo` with Ctrl-C to stop both Vite and Anvil.
+Planning uses Claude (`claude-opus-5`) when Anthropic credentials are available, for example `ANTHROPIC_API_KEY` in a root `.env` (see `.env.example`). Otherwise, or with `AGENT_PLANNER=offline`, it matches the task against the catalog by keyword.
+
+The agent isn't told its limits and sends over-limit orders anyway, so the card is the one that says no. Rejected attempts are mined as reverts and show up in the app's activity as **Blocked**, with the reason.
 
 ## Safe agent-to-agent payments (x402 + Intercepta)
 
@@ -83,7 +78,7 @@ npm run x402:local            # fork, deploy, fund, start service + agent daemon
 npm run x402:local -- --demo  # same, plus the scripted four-scenario demo
 ```
 
-The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the factory, creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the agent daemon and the UI at http://localhost:5173 (x402 payments tab). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`; if they're unset, the publicly OFAC-listed Ronin exploiter `0x098B…2f96` is used. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
+The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the factory, creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the agent daemon and the UI at http://localhost:5173 (open http://localhost:5173/payments). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`; if they're unset, the publicly OFAC-listed Ronin exploiter `0x098B…2f96` is used. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
 
 The keys are fresh on every run because Intercepta rejects Anvil's well-known dev addresses with a 404 ("An Externally Owned Account with this address doesn't exist"). The fail-closed rule would otherwise refuse every payment.
 
@@ -124,7 +119,7 @@ Expected output:
 
 If 1 fails at the facilitator with a signature error, confirm the signature is 96 bytes and `verifyTypedData` is the viem *public* action (ERC-1271 capable).
 
-Then run the UI flow: `npm --workspace @eaw/agent run daemon`, `npm run web`, open the **x402 payments** tab, and repeat 1–4 with the buttons, approving the hold from the inbox.
+Then run the UI flow: `npm --workspace @eaw/agent run daemon`, `npm run web`, open http://localhost:5173/payments (the **Payments** page), and repeat 1–4 with the buttons, approving the hold from the inbox.
 
 Origins must match exactly (`localhost` and `127.0.0.1` are different origins): open the UI at the same origin as
 `AGENT_UI_ORIGIN` (the daemon rejects other origins), and set `VITE_SERVICE_URL` to the same origin as `SERVICE_URL`.
@@ -145,18 +140,17 @@ Origins must match exactly (`localhost` and `127.0.0.1` are different origins): 
 
 ## Structure
 
-- `SPEC.md` — source of truth for MVP behavior
-- `packages/contracts` — mission wallet, factory, demo target, tests and deployment script
-- `packages/shared` — shared TypeScript types
-- `packages/risk` — Intercepta API client, wallet/counterparty profiling, PAY/CAP/HOLD/REFUSE policy (`@eaw/risk`)
-- `apps/agent` — local agent executor; also the x402 pay loop, hold queue and daemon API (`src/x402/`)
-- `apps/service` — x402-paid API with an Intercepta payer gate in front of its facilitator
-- `apps/web` — mission creation UI, plus an x402 payments tab
-- `scripts/demo.mjs` — local demo orchestrator
+- `SPEC.md`: source of truth for contract behavior
+- `packages/contracts`: wallets, factories, demo merchants, tests and deployment scripts (`Deploy.s.sol`, `DeployX402.s.sol`)
+- `packages/shared`: ABIs and revert decoding shared by the app and the agent
+- `packages/risk`: Intercepta API client, wallet/counterparty profiling, PAY/CAP/HOLD/REFUSE policy (`@eaw/risk`)
+- `apps/agent`: agent CLI with the Claude and offline planners; also the x402 pay loop, hold queue and daemon API (`src/x402/`)
+- `apps/service`: x402-paid API with an Intercepta payer gate in front of its facilitator
+- `apps/web`: React app (TanStack Router and Query, wagmi, shadcn/ui) for cards and activity, plus the x402 payments page (`/payments`)
+- `scripts/demo.mjs`: local demo orchestrator; `scripts/x402-local.mjs`: x402 demo on an Anvil fork of Base Sepolia
 
 ## Current scope
 
-The MVP deliberately uses native ETH and a local Anvil chain for the disposable-wallet and reusable-permission models,
-both of which are implemented. On top of that, `apps/agent` and `apps/service` add a live x402 payment flow in USDC on
-Base Sepolia, screened end-to-end by Intercepta (see "Safe agent-to-agent payments" above). Real DeFi targets,
-ERC-4337/session keys, and LLM planning come next.
+The MVP deliberately uses native ETH and a local Anvil chain for the one-time and multi-use cards. On top of that,
+`apps/agent` and `apps/service` add a live x402 payment flow in USDC on Base Sepolia, screened end-to-end by Intercepta
+(see "Safe agent-to-agent payments" above). Real DeFi targets and ERC-4337/session keys come next.

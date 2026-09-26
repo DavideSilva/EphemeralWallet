@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --paper: #eef2ec;
+  --paper-deep: #e1e8df;
+  --ink: #1d2b26;
+  --banknote: #2f5d50;
+  --intaglio: #4b3f72;
+  --void: #b3261e;
+
+  --radius: 0.5rem;
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #f7f9f5;
+  --card-foreground: var(--ink);
+  --popover: #f7f9f5;
+  --popover-foreground: var(--ink);
+  --primary: var(--banknote);
+  --primary-foreground: #f4f7f2;
+  --secondary: var(--paper-deep);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-deep);
+  --muted-foreground: #56665f;
+  --accent: #dde5da;
+  --accent-foreground: var(--ink);
+  --destructive: var(--void);
+  --border: #c9d3c8;
+  --input: #bfcabe;
+  --ring: var(--intaglio);
+}
+
+@theme inline {
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Libre Caslon Display", "Libre Caslon Text", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-ink: var(--ink);
+  --color-banknote: var(--banknote);
+  --color-intaglio: var(--intaglio);
+  --color-void: var(--void);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    background: var(--paper);
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--intaglio);
+    outline-offset: 2px;
+  }
+}

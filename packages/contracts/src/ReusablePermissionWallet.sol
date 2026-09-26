@@ -62,7 +62,9 @@ contract ReusablePermissionWallet {
     );
     event PermissionUsed(uint256 indexed permissionId, uint32 uses, uint256 spent);
     event PermissionRevoked(uint256 indexed permissionId);
-    event Executed(uint256 indexed permissionId, address indexed agent, address indexed target, uint256 value, bytes data);
+    event Executed(
+        uint256 indexed permissionId, address indexed agent, address indexed target, uint256 value, bytes data, string memo
+    );
     event Withdrawn(address indexed owner, uint256 amount);
     event PaymentApproved(uint256 indexed permissionId, address indexed payTo, uint256 amount, bytes32 nonce, bytes32 digest);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -111,8 +113,13 @@ contract ReusablePermissionWallet {
         emit PermissionCreated(permissionId, agent, allowedTarget, maxSpend, expiresAt, maxUses);
     }
 
-    function execute(uint256 permissionId, address target, uint256 value, bytes calldata data)
-        external
+    function execute(
+        uint256 permissionId,
+        address target,
+        uint256 value,
+        bytes calldata data,
+        string calldata memo
+    ) external
         returns (bytes memory result)
     {
         Permission storage permission = _consume(permissionId, value);
@@ -122,7 +129,7 @@ contract ReusablePermissionWallet {
         (bool ok, bytes memory returnData) = target.call{value: value}(data);
         if (!ok) revert CallFailed(returnData);
 
-        emit Executed(permissionId, msg.sender, target, value, data);
+        emit Executed(permissionId, msg.sender, target, value, data, memo);
         return returnData;
     }
 

@@ -154,7 +154,7 @@ try {
   console.log("Risky wallet:  ", riskyWallet, `(owner ${riskyOwner})`);
   console.log("Clean payee:   ", accounts.payee.address);
   console.log("Risky payee:   ", riskyPayTo);
-  console.log("UI:             http://localhost:5173 (x402 payments tab)\n");
+  console.log("UI:             http://localhost:5173/payments\n");
 
   if (process.argv.includes("--demo")) {
     spawnSync("npm", ["--workspace", "@eaw/agent", "run", "x402:demo"], { stdio: "inherit", env });

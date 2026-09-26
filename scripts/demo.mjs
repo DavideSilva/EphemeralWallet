@@ -81,19 +81,28 @@ try {
     const output = deploy.stdout + deploy.stderr;
     const factory = output.match(/MissionFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const reusableFactory = output.match(/ReusableWalletFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
-    const shop = output.match(/DemoShop\s+(0x[a-fA-F0-9]{40})/)?.[1];
+    const cafe = output.match(/Cafe\s+(0x[a-fA-F0-9]{40})/)?.[1];
+    const ticketOffice = output.match(/TicketOffice\s+(0x[a-fA-F0-9]{40})/)?.[1];
+    const tipJar = output.match(/TipJar\s+(0x[a-fA-F0-9]{40})/)?.[1];
 
-    if (!factory || !reusableFactory || !shop) throw new Error("Could not read deployed contract addresses");
+    if (!factory || !reusableFactory || !cafe || !ticketOffice || !tipJar) {
+      throw new Error("Could not read deployed contract addresses");
+    }
 
     console.log("\nLocal demo ready");
     console.log("MissionFactory:", factory);
     console.log("ReusableWalletFactory:", reusableFactory);
-    console.log("DemoShop:", shop);
+    console.log("Merchants:", `Cafe ${cafe}`, `Ticket office ${ticketOffice}`, `Tip jar ${tipJar}`);
     console.log("UI: http://localhost:5173\n");
 
     const web = spawn("npm", ["run", "web"], {
       stdio: "inherit",
-      env: { ...process.env, VITE_FACTORY: factory, VITE_REUSABLE_FACTORY: reusableFactory, VITE_DEMO_SHOP: shop }
+      env: {
+        ...process.env,
+        VITE_FACTORY: factory,
+        VITE_REUSABLE_FACTORY: reusableFactory,
+        VITE_MERCHANTS: [cafe, ticketOffice, tipJar].join(",")
+      }
     });
 
     const stop = () => { web.kill(); anvil.kill(); };
