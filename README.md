@@ -73,7 +73,21 @@ Payments run on Base Sepolia; screening uses the same addresses' **mainnet** his
 - [`apps/service/src/payer-gate.ts`](apps/service/src/payer-gate.ts) — payee gate, runs before facilitator verify/settle
 - [`packages/risk/src/policy.ts`](packages/risk/src/policy.ts) — how results become PAY / CAP / HOLD / REFUSE
 
-### Run it
+### Run it locally (Anvil fork of Base Sepolia)
+
+The quickest way to see it work. You only need Foundry and `INTERCEPTA_API_KEY` in `.env`:
+
+```bash
+npm install
+npm run x402:local            # fork, deploy, fund, start service + agent daemon + UI
+npm run x402:local -- --demo  # same, plus the scripted four-scenario demo
+```
+
+The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the factory, creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the agent daemon and the UI at http://localhost:5173 (x402 payments tab). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`; if they're unset, the publicly OFAC-listed Ronin exploiter `0x098B…2f96` is used. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
+
+The keys are fresh on every run because Intercepta rejects Anvil's well-known dev addresses with a 404 ("An Externally Owned Account with this address doesn't exist"). The fail-closed rule would otherwise refuse every payment.
+
+### Run it on Base Sepolia
 
 Prerequisites (manual, one-time):
 
