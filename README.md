@@ -93,6 +93,7 @@ See [`packages/risk/scripts/smoke.ts`](packages/risk/scripts/smoke.ts) — it's 
 With `.env` filled in (see `.env.example`):
 
 ```bash
+set -a; source .env; set +a                   # export .env so forge sees $RPC_URL / $OWNER_PRIVATE_KEY
 cd packages/contracts && forge script script/DeployX402.s.sol:DeployX402 --rpc-url $RPC_URL --broadcast --private-key $OWNER_PRIVATE_KEY
 # put FACTORY_ADDRESS in .env, then:
 npm --workspace @eaw/agent run x402:setup      # put printed WALLET_ADDRESS / RISKY_WALLET_ADDRESS in .env
@@ -110,6 +111,15 @@ Expected output:
 If 1 fails at the facilitator with a signature error, confirm the signature is 96 bytes and `verifyTypedData` is the viem *public* action (ERC-1271 capable).
 
 Then run the UI flow: `npm --workspace @eaw/agent run daemon`, `npm run web`, open the **x402 payments** tab, and repeat 1–4 with the buttons, approving the hold from the inbox.
+
+Origins must match exactly (`localhost` and `127.0.0.1` are different origins): open the UI at the same origin as
+`AGENT_UI_ORIGIN` (the daemon rejects other origins), and set `VITE_SERVICE_URL` to the same origin as `SERVICE_URL`.
+
+### Known limitations
+
+- The permission budget is consumed when the agent approves a payment on-chain, not when it settles.
+- An approved-but-unsettled authorization survives a revoke until its `validBefore` (the agent refuses windows over 15 minutes).
+- `createWalletFor` on the factory is permissionless — fine for the demo, not for production.
 
 ### Intercepta API feedback
 
