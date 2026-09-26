@@ -84,7 +84,7 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
             ? "Held: not approved while the agent waited"
           : "Held for your approval"
       : `Blocked: ${item.reason ?? "rejected by the card"}`,
-    approved: `You approved ${item.summary ?? "a purchase"}`,
+    approved: `You approved ${item.summary ?? "a purchase"}${card?.approvalBy === "passkey" ? " with Touch ID" : ""}`,
     cancelled: `Cancelled the ${merchant} card`,
     refund: `Returned leftovers from the ${merchant} card`,
   }[item.kind];

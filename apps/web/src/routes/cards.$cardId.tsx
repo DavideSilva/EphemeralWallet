@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityList } from "@/components/activity-list";
@@ -22,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { approvePurchase, cancelCard, reclaimCard } from "@/lib/actions";
+import { approvalChallenge, approvalExpiry, approvePurchase, approveWithPasskey, cancelCard, reclaimCard } from "@/lib/actions";
 import { describePurchase, type Activity, type Card, type Held, type Snapshot } from "@/lib/data";
 import { agentCommand, eth, shortAddress, time, validity } from "@/lib/format";
 import { savedGoal, saveGoal } from "@/lib/goals";
@@ -84,7 +84,7 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
           </div>
 
           <IssueCheck cardId={card.id} />
-          {card.status === "active" && <ApprovalRequests activity={activity} />}
+          {card.status === "active" && <ApprovalRequests card={card} activity={activity} />}
           {card.status === "active" ? <TaskComposer card={card} /> : <Inactive card={card} />}
           <Catalog merchant={card.merchant} />
           <Controls card={card} />
@@ -140,7 +140,8 @@ function Limits({ card }: { card: Card }) {
       </div>
       {card.approvalThreshold !== undefined && (
         <p className="text-sm text-muted-foreground">
-          Any purchase over {eth(card.approvalThreshold)} ETH waits for your approval of that exact purchase.
+          Any purchase over {eth(card.approvalThreshold)} ETH waits until you approve that exact purchase
+          {card.approvalBy === "passkey" ? " with Touch ID." : "."}
         </p>
       )}
     </div>
@@ -156,26 +157,34 @@ function pendingApprovals(activity: Activity[]): Held[] {
   return [...latest.values()].filter(held => held.state === "waiting");
 }
 
-function ApprovalRequests({ activity }: { activity: Activity[] }) {
+function ApprovalRequests({ card, activity }: { card: Card; activity: Activity[] }) {
   const pending = pendingApprovals(activity);
   if (pending.length === 0) return null;
   return (
     <div className="space-y-3">
       {pending.map(held => (
-        <ApprovalRequest key={held.requestKey} held={held} />
+        <ApprovalRequest key={held.requestKey} held={held} passkey={card.approvalBy === "passkey"} />
       ))}
     </div>
   );
 }
 
-function ApprovalRequest({ held }: { held: Held }) {
+function ApprovalRequest({ held, passkey }: { held: Held; passkey: boolean }) {
   const queryClient = useQueryClient();
+  const [validUntil] = useState(approvalExpiry);
+  // Read ahead so the click goes straight to Touch ID (Safari only allows the prompt right after a click).
+  const challenge = useQuery({
+    queryKey: ["approval-challenge", held.requestKey, validUntil.toString()],
+    queryFn: () => approvalChallenge(held, validUntil),
+    enabled: passkey,
+    staleTime: Infinity,
+  });
   const { data: merchants } = useMerchants();
   const merchant = merchants?.find(m => m.address.toLowerCase() === held.target.toLowerCase());
   // Decoded from the calldata the agent sent, never from its memo, so the owner approves what will actually run.
   const purchase = merchants ? describePurchase(merchants, held.target, held.data) : undefined;
   const approve = useMutation({
-    mutationFn: () => approvePurchase(held),
+    mutationFn: () => (passkey ? approveWithPasskey(held, validUntil, challenge.data!) : approvePurchase(held)),
     onSuccess: () => {
       toast.success("Approved. The agent will retry now.");
       return queryClient.invalidateQueries({ queryKey: ["snapshot"] });
@@ -192,8 +201,12 @@ function ApprovalRequest({ held }: { held: Held }) {
         <span className="font-medium">{eth(held.value)} ETH</span> at {merchant?.name ?? held.target}?
       </p>
       <p className="mt-1 text-xs text-muted-foreground">This approves only this exact purchase, once, for the next hour.</p>
-      <Button className="mt-3" onClick={() => approve.mutate()} disabled={approve.isPending}>
-        {approve.isPending ? "Approving…" : "Approve purchase"}
+      <Button
+        className="mt-3"
+        onClick={() => approve.mutate()}
+        disabled={approve.isPending || (passkey && !challenge.data)}
+      >
+        {approve.isPending ? "Approving…" : passkey ? "Approve with Touch ID" : "Approve purchase"}
       </Button>
     </div>
   );

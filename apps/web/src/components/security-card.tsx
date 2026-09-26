@@ -14,7 +14,7 @@ const themes = {
 
 export type CardFace = Pick<
   Card,
-  "id" | "kind" | "merchant" | "maxSpend" | "spent" | "maxUses" | "uses" | "expiresAt" | "status" | "approvalThreshold"
+  "id" | "kind" | "merchant" | "maxSpend" | "spent" | "maxUses" | "uses" | "expiresAt" | "status" | "approvalThreshold" | "approvalBy"
 >;
 
 export function SecurityCard({
@@ -50,7 +50,7 @@ export function SecurityCard({
               {theme.label}
               {card.approvalThreshold !== undefined && (
                 <span className="rounded-full border border-current/30 px-1.5 py-px text-[0.65rem] opacity-90">
-                  Approval over {eth(card.approvalThreshold)} ETH
+                  {card.approvalBy === "passkey" ? "Touch ID" : "Approval"} over {eth(card.approvalThreshold)} ETH
                 </span>
               )}
             </span>

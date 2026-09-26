@@ -26,6 +26,7 @@ import { approvalHook, DEFAULT_AGENT } from "@/lib/config";
 import type { CardKind } from "@/lib/data";
 import { eth, shortAddress } from "@/lib/format";
 import { saveGoal } from "@/lib/goals";
+import { forgetPasskey, passkeysSupported, storedPasskey } from "@/lib/passkey";
 import { useMerchants, useSnapshot } from "@/lib/hooks";
 import { saveScreening, useScreening, type ScreeningResponse, type ScreeningStatus } from "@/lib/screening";
 import { cn } from "@/lib/utils";
@@ -87,6 +88,8 @@ function IssueCard() {
   const [agent, setAgent] = useState<string>(DEFAULT_AGENT);
   const [funding, setFunding] = useState("0.02");
   const [approvalOver, setApprovalOver] = useState("");
+  const [useTouchId, setUseTouchId] = useState(passkeysSupported);
+  const [hasPasskey, setHasPasskey] = useState(() => storedPasskey() !== null);
   const [submitted, setSubmitted] = useState(false);
 
   const isCustom = merchant === "custom";
@@ -132,6 +135,7 @@ function IssueCard() {
         validFor: duration,
         accountFunding: fundingWei ?? 0n,
         approvalThreshold: approvalThreshold ?? undefined,
+        approveWithPasskey: useTouchId,
       }),
     onSuccess: async cardId => {
       if (goal.trim()) saveGoal(cardId, goal.trim());
@@ -298,6 +302,37 @@ function IssueCard() {
               onChange={e => setApprovalOver(e.target.value)}
               className="bg-card sm:max-w-48"
             />
+            {passkeysSupported() && (
+              <div className="space-y-1 pt-1">
+                <label htmlFor="touch-id" className="flex items-center gap-2 text-sm">
+                  <input
+                    id="touch-id"
+                    type="checkbox"
+                    checked={useTouchId}
+                    onChange={e => setUseTouchId(e.target.checked)}
+                    className="size-4 accent-[var(--banknote)]"
+                  />
+                  Approve with Touch ID (your passkey), so the app's own key can't approve for you
+                </label>
+                {useTouchId && (
+                  <p className="text-sm text-muted-foreground">
+                    {hasPasskey ? "Uses the passkey already saved in this browser. " : "You'll be asked to create a passkey when you issue the card. "}
+                    {hasPasskey && (
+                      <button
+                        type="button"
+                        className="underline underline-offset-2"
+                        onClick={() => {
+                          forgetPasskey();
+                          setHasPasskey(false);
+                        }}
+                      >
+                        Use a new passkey
+                      </button>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
           </Field>
         )}
 
@@ -356,6 +391,7 @@ function IssueCard() {
               expiresAt: Date.now() / 1000 + duration,
               status: "active",
               approvalThreshold: approvalThreshold ?? undefined,
+              approvalBy: useTouchId ? "passkey" : "owner",
             }}
           />
         )}
