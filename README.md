@@ -125,6 +125,30 @@ The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC 
 
 The keys are fresh on every run because Intercepta rejects Anvil's well-known dev addresses with a 404 ("An Externally Owned Account with this address doesn't exist"). The fail-closed rule would otherwise refuse every payment.
 
+### Touch ID for the agent's payments
+
+`npm run demo` pauses before creating the agent's payment wallet: open http://localhost:5173/payments and click
+**Protect payments with Touch ID** (one Touch ID prompt the first time; later runs reuse the passkey, but you still
+click to confirm). Setup then creates the wallet with its only permission carrying the approval plugin
+(`ApprovalHook`, see `SPEC.md`): the **wallet itself** refuses, until you approve with Touch ID,
+
+- any payment to a payee you haven't approved a payment to before, whatever the amount, and
+- any payment over 0.25 USDC.
+
+So even a hacked agent holding its own key can't pay a new address (such as its own) or move more than 0.25 USDC at
+once. See it without an Intercepta key:
+
+```bash
+npm run demo -- --rogue   # after enrolling: a hacked agent tries to pay itself 0.01 / 0.25 / 0.30 USDC and is refused
+```
+
+With an Intercepta key, the agent holds those payments too ("Waiting for you" on /payments, reason
+`touch_id_new_payee` or `touch_id_over_threshold`); **Approve with Touch ID** signs "pay this payee this amount",
+records it on-chain, and the agent retries. Holds that come only from Intercepta's risk rating use the same button, but
+the wallet can't see Intercepta, so for those the protection is the agent's. Limits: known payees can still be paid up
+to 0.25 USDC each within the wallet's budget; the web app is trusted (Touch ID signs a code it shows you). Skip the
+whole step with `npm run demo -- --no-touch-id` (the payment wallet is then unprotected, as before).
+
 ### Run it on Base Sepolia
 
 Prerequisites (manual, one-time):
