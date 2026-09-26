@@ -25,7 +25,7 @@ import { publicClient } from "@/lib/chain";
 import { approvalHook, DEFAULT_AGENT } from "@/lib/config";
 import { fetchSnapshot, type CardKind } from "@/lib/data";
 import { eth, money, shortAddress, unit } from "@/lib/format";
-import { saveGoal } from "@/lib/goals";
+import { exampleGoal, saveGoal } from "@/lib/goals";
 import { forgetPasskey, passkeysSupported, storedPasskey } from "@/lib/passkey";
 import { useMerchants, useSnapshot } from "@/lib/hooks";
 import { saveScreening, useScreening, type ScreeningResponse, type ScreeningStatus } from "@/lib/screening";
@@ -402,7 +402,7 @@ function IssueCard() {
               rows={2}
               value={goal}
               onChange={e => setGoal(e.target.value)}
-              placeholder="Get me a flat white"
+              placeholder={exampleGoal(chosen?.items)}
               className="bg-card"
             />
           </Field>

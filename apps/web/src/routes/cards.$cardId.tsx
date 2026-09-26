@@ -25,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { approvalChallenge, approvePurchase, approveWithPasskey, cancelCard, reclaimCard } from "@/lib/actions";
 import { describePurchase, type Activity, type Card, type Held, type Snapshot } from "@/lib/data";
 import { agentCommand, amount, eth, money, shortAddress, time, unit, validity } from "@/lib/format";
-import { savedGoal, saveGoal } from "@/lib/goals";
+import { exampleGoal, savedGoal, saveGoal } from "@/lib/goals";
 import { useMerchant, useMerchants } from "@/lib/hooks";
 import { storedPasskey } from "@/lib/passkey";
 import { savedScreening, type ScreeningStatus } from "@/lib/screening";
@@ -233,8 +233,7 @@ function ApprovalRequest({ attempt, held, card }: { attempt: string; held: Held;
 function TaskComposer({ card }: { card: Card }) {
   const merchant = useMerchant(card.merchant);
   const [goal, setGoal] = useState(() => savedGoal(card.id));
-  const first = merchant?.items[0]?.name.toLowerCase();
-  const example = first ? `Buy ${/^[aeiou]/.test(first) ? "an" : "a"} ${first}` : "Describe what to buy";
+  const example = exampleGoal(merchant?.items);
   return (
     <div className="space-y-3">
       <Label htmlFor="goal" className="text-base font-semibold">
