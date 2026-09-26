@@ -33,7 +33,6 @@ contract ReusablePermissionWallet {
     error InvalidHook();
     error DuplicateHook();
     error TooManyHooks();
-    error HooksNeedNativePermission();
     error HookRejected(address hook, bytes reason);
     error Reentered();
     error InsufficientFunds();
@@ -117,8 +116,8 @@ contract ReusablePermissionWallet {
     }
 
     /// @notice Creates a permission with plugins attached. The plugins can't be changed afterwards;
-    /// to change the rules, revoke the permission and issue a new one. Only native (ETH) permissions
-    /// take plugins, since only `execute` runs them.
+    /// to change the rules, revoke the permission and issue a new one. Plugins run in `execute` (native
+    /// permissions) and in `approvePayment` (token permissions, as "pay payTo this amount").
     function createPermissionWithHooks(
         address agent,
         address allowedTarget,
@@ -128,7 +127,6 @@ contract ReusablePermissionWallet {
         address asset,
         Hook[] calldata hooks
     ) external onlyOwner returns (uint256 permissionId) {
-        if (asset != address(0)) revert HooksNeedNativePermission();
         if (hooks.length > MAX_HOOKS) revert TooManyHooks();
         permissionId = _createPermission(agent, allowedTarget, maxSpend, expiresAt, maxUses, asset);
         for (uint256 i = 0; i < hooks.length; i++) {
@@ -203,7 +201,7 @@ contract ReusablePermissionWallet {
     }
 
     /// @dev A hook's revert is wrapped so it can't pass itself off as one of the wallet's own errors.
-    function _runHooks(uint256 permissionId, address target, uint256 value, bytes calldata data) internal {
+    function _runHooks(uint256 permissionId, address target, uint256 value, bytes memory data) internal {
         Hook[] storage hooks = _hooks[permissionId];
         for (uint256 i = 0; i < hooks.length; i++) {
             try IPermissionHook(hooks[i].hook).beforeExecute(permissionId, msg.sender, target, value, data, hooks[i].config) {}
@@ -224,6 +222,9 @@ contract ReusablePermissionWallet {
         uint256 validBefore,
         bytes32 nonce
     ) external returns (bytes32 digest) {
+        if (_executing) revert Reentered();
+        _executing = true;
+
         Permission storage permission = _consume(permissionId, amount);
         if (permission.asset == address(0)) revert NotTokenPermission();
         if (payTo == address(0)) revert InvalidTarget();
@@ -243,10 +244,15 @@ contract ReusablePermissionWallet {
                 )
             )
         );
+        // Plugins see a payment as "pay payTo this amount" (no calldata): an approval covers that, not one nonce,
+        // so the agent's retry with a fresh x402 authorization matches. A rejection rolls back everything above.
+        _runHooks(permissionId, payTo, amount, "");
+
         approvedDigest[digest] = true;
         approvedNonce[nonce] = permissionId + 1;
 
         emit PaymentApproved(permissionId, payTo, amount, nonce, digest);
+        _executing = false;
     }
 
     /// @notice ERC-1271: only digests approved through approvePayment are valid.

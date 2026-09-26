@@ -203,12 +203,12 @@ contract PermissionHooksTest is Test {
         issue(address(target), hooks);
     }
 
-    function testRejectsHooksOnTokenPermission() public {
-        vm.expectRevert(ReusablePermissionWallet.HooksNeedNativePermission.selector);
+    function testTokenPermissionsTakeHooks() public {
         vm.prank(owner);
-        wallet.createPermissionWithHooks(
+        uint256 id = wallet.createPermissionWithHooks(
             agent, address(0), 1 ether, uint64(block.timestamp + 1 hours), 1, makeAddr("usdc"), hooks1(address(hookA), "")
         );
+        assertEq(wallet.hooksOf(id).length, 1);
     }
 
     function testMerchantCannotReenter() public {
