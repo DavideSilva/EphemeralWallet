@@ -7,10 +7,12 @@ import {
   isAddress,
   zeroAddress,
   type Address,
+  type Hex,
 } from "viem";
 import { foundry } from "viem/chains";
-import { merchantAbi, missionWalletAbi, reusableWalletAbi } from "../../../packages/shared/src/abis";
-import { describeRevert, revertData } from "../../../packages/shared/src/revert";
+import { approvalHookAbi, merchantAbi, missionWalletAbi, reusableWalletAbi } from "../../../packages/shared/src/abis";
+import { decodeRevert, describeRevert, revertData } from "../../../packages/shared/src/revert";
+import { APPROVAL_WAIT_SECONDS } from "../../../packages/shared/src/approval";
 import { planOffline, planWithClaude, type Plan } from "./planner";
 
 try {
@@ -132,10 +134,10 @@ const walletClient = createWalletClient({ account: card.agent, chain, transport:
 
 // A fixed gas limit skips estimation, so over-limit attempts are mined as reverts and show up as blocked in the app.
 const gas = 500_000n;
-const hash =
+const send = () =>
   permissionId === undefined
-    ? await walletClient.writeContract({ address: wallet, abi: missionWalletAbi, functionName: "execute", args: [card.merchant, value, data, goal], gas })
-    : await walletClient.writeContract({
+    ? walletClient.writeContract({ address: wallet, abi: missionWalletAbi, functionName: "execute", args: [card.merchant, value, data, goal], gas })
+    : walletClient.writeContract({
         address: wallet,
         abi: reusableWalletAbi,
         functionName: "execute",
@@ -143,7 +145,58 @@ const hash =
         gas,
       });
 
-const receipt = await publicClient.waitForTransactionReceipt({ hash });
+// Polls the approval plugin until the owner approves this exact purchase in the app, or time runs out.
+async function waitForApproval(hook: Address, requestKey: Hex): Promise<boolean> {
+  const deadline = Date.now() + APPROVAL_WAIT_SECONDS * 1000;
+  let lastNotice = 0;
+  const stop = () => {
+    console.log("\nStopped waiting for approval. Nothing was bought.");
+    process.exit(2);
+  };
+  process.once("SIGINT", stop);
+  try {
+    while (Date.now() < deadline) {
+      const [until, block] = await Promise.all([
+        publicClient.readContract({ address: hook, abi: approvalHookAbi, functionName: "approvedUntil", args: [requestKey] }),
+        publicClient.getBlock(),
+      ]);
+      // An approval from an earlier run that expired unused stays on-chain; only a live one counts.
+      if (until >= block.timestamp) return true;
+      if (Date.now() - lastNotice >= 30_000) {
+        const left = Math.ceil((deadline - Date.now()) / 1000);
+        console.log(`        Waiting for the owner to approve this purchase in the app (${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left)...`);
+        lastNotice = Date.now();
+      }
+      await new Promise(resolve => setTimeout(resolve, 1_000));
+    }
+    return false;
+  } finally {
+    // Once the retry is being sent, Ctrl-C shouldn't claim nothing was bought.
+    process.off("SIGINT", stop);
+  }
+}
+
+let hash = await send();
+let receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+if (receipt.status !== "success" && permissionId !== undefined) {
+  const revert = decodeRevert(await revertData(publicClient.request, hash));
+  if (revert?.name === "ApprovalRequired" && revert.hook) {
+    console.log(`Held    ${order} needs the owner's approval`);
+    console.log(`Tx      ${hash}`);
+    if (!(await waitForApproval(revert.hook, revert.args![0] as Hex))) {
+      console.log(`No approval within ${APPROVAL_WAIT_SECONDS / 60} minutes. Nothing was bought.`);
+      process.exit(2);
+    }
+    console.log("Approved by the owner. Sending the same order again...");
+    // The card may have changed while waiting; the retry is the byte-identical order, and the card still decides.
+    const latest = await readCard();
+    if (latest.status !== "active") console.log(`Heads up: card is now ${latest.status}. Sending anyway; the card decides.`);
+    hash = await send();
+    receipt = await publicClient.waitForTransactionReceipt({ hash });
+  }
+}
+
 if (receipt.status === "success") {
   console.log(`Bought  ${order} at ${merchantName}`);
   console.log(`Tx      ${hash}`);
