@@ -10,7 +10,7 @@ On top of that, agents can **pay each other over x402** in USDC from a reusable 
 
 ## Run the demo locally
 
-Requirements: Node.js/npm and Foundry (`anvil` + `forge`).
+Requirements: Node.js/npm and Foundry 1.6 or newer (`anvil` + `forge`; the demo chain runs the `osaka` hardfork for the P-256 precompile).
 
 ```bash
 git clone https://github.com/DavideSilva/EphemeralWallet.git
@@ -79,7 +79,9 @@ passkey can. Untick **Approve with Touch ID** to have the owner account approve 
 threshold applies per purchase, so an order split into small ones isn't held; the card's budget and uses still cap it.
 
 The passkey is kept in your browser's keychain, and its id and public key in this browser's local storage, so approve
-in the browser you issued the card from. **Use a new passkey** on the issue form starts over.
+in the browser you issued the card from. **Use a new passkey** on the issue form starts over; cards issued with the old
+passkey then say so on their page instead of asking for Touch ID. If nobody approves while the agent waits (5 minutes),
+the purchase shows as "not approved while the agent waited" and the Approve button goes away: run the agent again.
 
 ## Safe agent-to-agent payments (x402 + Intercepta)
 
