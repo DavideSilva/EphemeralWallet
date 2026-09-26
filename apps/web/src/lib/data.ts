@@ -282,7 +282,8 @@ const order = (transactionIndex: number, logIndex = 0) => transactionIndex * 10_
 
 export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Promise<Snapshot> {
   const { missionFactory, reusableFactory } = contracts();
-  const toBlock = await publicClient.getBlockNumber();
+  // The default RPC cache can return the pre-transaction height after a receipt confirms.
+  const toBlock = await publicClient.getBlockNumber({ cacheTime: 0 });
   await resetIfChainRestarted(toBlock);
   // The chain's "now" (the pending block's time), not this computer's clock: card expiry and payment windows are
   // enforced on chain, and a local fork's clock can drift from this one.
