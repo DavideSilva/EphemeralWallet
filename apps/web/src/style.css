@@ -4,3 +4,14 @@
 .tabs button.active{background:#f5f5f7;color:#0b0b0d;border-color:#f5f5f7}
 .mode-label{margin:10px 0 0;color:#8b8b95;font-size:13px}
 section button{margin-top:8px}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-weight:700;font-size:12px;color:#fff}
+.badge.PAY,.badge.TRUSTED{background:#15803d}
+.badge.CAP,.badge.CAUTION{background:#b45309}
+.badge.HOLD{background:#1d4ed8}
+.badge.REFUSE,.badge.BLOCKED,.badge.FAILED{background:#b91c1c}
+.card{border:1px solid #d4d4d8;border-radius:8px;padding:12px;margin:8px 0}
+.reasons{margin:6px 0 0 18px}
+.reasons .code{font-family:monospace;font-weight:700}
+.muted{color:#71717a}
+.error{color:#b91c1c}
+.actions{display:flex;flex-wrap:wrap;gap:8px}

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPublicClient, createWalletClient, http, parseEther, parseEventLogs } from "viem";
 import { foundry } from "viem/chains";
+import { PaymentsPanel } from "./x402/PaymentsPanel";
 import "./style.css";
 
 const missionFactoryAbi = [
@@ -23,7 +24,7 @@ const reusableAbi = [
 const DEFAULT_AGENT="0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
 function App() {
-  const [mode,setMode]=useState<"disposable"|"reusable">("disposable");
+  const [mode,setMode]=useState<"disposable"|"reusable"|"x402">("disposable");
   const [status,setStatus]=useState("Ready");
   const [agent,setAgent]=useState(DEFAULT_AGENT);
   const [target,setTarget]=useState(import.meta.env.VITE_DEMO_SHOP ?? "");
@@ -97,10 +98,11 @@ function App() {
     <div className="tabs">
       <button className={mode==="disposable" ? "active" : ""} onClick={()=>{setMode("disposable");setStatus("Disposable wallet mode");}}>Disposable wallet</button>
       <button className={mode==="reusable" ? "active" : ""} onClick={()=>{setMode("reusable");setStatus("Reusable wallet mode");}}>Reusable wallet</button>
+      <button className={mode==="x402" ? "active" : ""} onClick={()=>{setMode("x402");setStatus("x402 payments");}}>x402 payments</button>
     </div>
-    <p className="mode-label">Selected: <strong>{mode==="disposable" ? "Disposable wallet" : "Reusable wallet"}</strong></p>
+    <p className="mode-label">Selected: <strong>{mode==="disposable" ? "Disposable wallet" : mode==="reusable" ? "Reusable wallet" : "x402 payments"}</strong></p>
 
-    <section>
+    {mode==="x402" ? <PaymentsPanel/> : <section>
       <label>Agent address<input value={agent} onChange={e=>setAgent(e.target.value)}/></label>
       <label>Allowed target<input value={target} onChange={e=>setTarget(e.target.value)}/></label>
       <label>Permission budget (ETH)<input value={budget} onChange={e=>setBudget(e.target.value)}/></label>
@@ -118,7 +120,7 @@ function App() {
       </>}
 
       <code>{status}</code>
-    </section>
+    </section>}
   </main>;
 }
 createRoot(document.getElementById("root")!).render(<App/>);
