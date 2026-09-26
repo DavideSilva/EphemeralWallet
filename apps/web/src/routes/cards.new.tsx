@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { issueCard } from "@/lib/actions";
 import { publicClient } from "@/lib/chain";
 import { approvalHook, DEFAULT_AGENT } from "@/lib/config";
-import type { CardKind } from "@/lib/data";
+import { fetchSnapshot, type CardKind } from "@/lib/data";
 import { eth, money, shortAddress, unit } from "@/lib/format";
 import { saveGoal } from "@/lib/goals";
 import { forgetPasskey, passkeysSupported, storedPasskey } from "@/lib/passkey";
@@ -156,9 +156,13 @@ function IssueCard() {
     onSuccess: async cardId => {
       if (goal.trim()) saveGoal(cardId, goal.trim());
       if (screening.data) saveScreening(cardId, screening.data);
-      // This route has no snapshot observer, so invalidating alone leaves the previous (often empty) snapshot in cache.
-      // Keep the issuing dialog open until the refreshed snapshot can render the new card.
-      await queryClient.refetchQueries({ queryKey: ["snapshot"], type: "all" });
+      // A block-triggered refresh may still be reading the snapshot from before this transaction.
+      // Cancel it and fetch from the confirmed block before the detail page reads the cache.
+      await queryClient.cancelQueries({ queryKey: ["snapshot"] });
+      await queryClient.fetchQuery({
+        queryKey: ["snapshot", owner],
+        queryFn: () => fetchSnapshot(owner!, merchants!),
+      });
       toast.success("Card issued");
       navigate({ to: "/cards/$cardId", params: { cardId } });
     },
