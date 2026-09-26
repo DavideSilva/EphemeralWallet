@@ -20,7 +20,10 @@ function Root() {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-border/70 bg-paper/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[90rem] items-center gap-2 px-4 sm:gap-6 sm:px-8 lg:px-12">
-          <Link to="/" className="font-display text-2xl leading-none tracking-tight">
+          <Link to="/" className="flex items-center gap-2 font-display text-2xl leading-none tracking-tight" aria-label="Ephemeral Wallet home">
+            <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#08090e]" aria-hidden="true">
+              <img src="/images/ephemeral-wallet-logo.png" alt="" className="scale-[2.5]" />
+            </span>
             Ephemeral
           </Link>
           <nav className="flex items-center gap-1">
