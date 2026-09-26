@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as PaymentsRouteImport } from './routes/payments'
 import { Route as CardsIndexRouteImport } from './routes/cards.index'
 import { Route as CardsCardIdRouteImport } from './routes/cards.$cardId'
 import { Route as CardsNewRouteImport } from './routes/cards.new'
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
 const ActivityRoute = ActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaymentsRoute = PaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CardsIndexRoute = CardsIndexRouteImport.update({
@@ -44,6 +50,7 @@ const CardsNewRoute = CardsNewRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/payments': typeof PaymentsRoute
   '/cards/$cardId': typeof CardsCardIdRoute
   '/cards/new': typeof CardsNewRoute
   '/cards/': typeof CardsIndexRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/payments': typeof PaymentsRoute
   '/cards/$cardId': typeof CardsCardIdRoute
   '/cards/new': typeof CardsNewRoute
   '/cards': typeof CardsIndexRoute
@@ -59,22 +67,37 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/payments': typeof PaymentsRoute
   '/cards/$cardId': typeof CardsCardIdRoute
   '/cards/new': typeof CardsNewRoute
   '/cards/': typeof CardsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/activity' | '/cards/$cardId' | '/cards/new' | '/cards/'
+  fullPaths:
+    | '/'
+    | '/activity'
+    | '/payments'
+    | '/cards/$cardId'
+    | '/cards/new'
+    | '/cards/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/activity' | '/cards/$cardId' | '/cards/new' | '/cards'
+  to:
+    '/' | '/activity' | '/payments' | '/cards/$cardId' | '/cards/new' | '/cards'
   id:
-    '__root__' | '/' | '/activity' | '/cards/$cardId' | '/cards/new' | '/cards/'
+    | '__root__'
+    | '/'
+    | '/activity'
+    | '/payments'
+    | '/cards/$cardId'
+    | '/cards/new'
+    | '/cards/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
+  PaymentsRoute: typeof PaymentsRoute
   CardsCardIdRoute: typeof CardsCardIdRoute
   CardsNewRoute: typeof CardsNewRoute
   CardsIndexRoute: typeof CardsIndexRoute
@@ -94,6 +117,13 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/activity'
       preLoaderRoute: typeof ActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/payments': {
+      id: '/payments'
+      path: '/payments'
+      fullPath: '/payments'
+      preLoaderRoute: typeof PaymentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cards/': {
@@ -123,6 +153,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
+  PaymentsRoute: PaymentsRoute,
   CardsCardIdRoute: CardsCardIdRoute,
   CardsNewRoute: CardsNewRoute,
   CardsIndexRoute: CardsIndexRoute,

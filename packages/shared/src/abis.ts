@@ -97,6 +97,20 @@ export const reusableFactoryAbi = [
   },
   {
     type: "function",
+    name: "createWalletFor",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "agent", type: "address" },
+      { name: "asset", type: "address" },
+      { name: "maxSpend", type: "uint256" },
+      { name: "expiresAt", type: "uint64" },
+      { name: "maxUses", type: "uint32" },
+    ],
+    outputs: [{ name: "wallet", type: "address" }],
+  },
+  {
+    type: "function",
     name: "lastWallet",
     stateMutability: "view",
     inputs: [{ name: "", type: "address" }],
@@ -109,6 +123,15 @@ export const reusableFactoryAbi = [
       { indexed: true, name: "owner", type: "address" },
       { indexed: true, name: "wallet", type: "address" },
       { indexed: false, name: "fundedAmount", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "WalletCreatedFor",
+    inputs: [
+      { indexed: true, name: "owner", type: "address" },
+      { indexed: true, name: "wallet", type: "address" },
+      { indexed: true, name: "creator", type: "address" },
     ],
   },
 ] as const;
@@ -124,6 +147,7 @@ export const reusableWalletAbi = [
       { name: "maxSpend", type: "uint256" },
       { name: "expiresAt", type: "uint64" },
       { name: "maxUses", type: "uint32" },
+      { name: "asset", type: "address" },
     ],
     outputs: [{ name: "permissionId", type: "uint256" }],
   },
@@ -170,7 +194,63 @@ export const reusableWalletAbi = [
       { name: "maxUses", type: "uint32" },
       { name: "uses", type: "uint32" },
       { name: "revoked", type: "bool" },
+      { name: "asset", type: "address" },
     ],
+  },
+  {
+    type: "function",
+    name: "approvePayment",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "permissionId", type: "uint256" },
+      { name: "payTo", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "validAfter", type: "uint256" },
+      { name: "validBefore", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+    ],
+    outputs: [{ name: "digest", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "isValidSignature",
+    stateMutability: "view",
+    inputs: [
+      { name: "hash", type: "bytes32" },
+      { name: "", type: "bytes" },
+    ],
+    outputs: [{ type: "bytes4" }],
+  },
+  {
+    type: "function",
+    name: "approvedDigest",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "approvedNonce",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "withdrawToken",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "asset", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "transferOwnership",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newOwner", type: "address" }],
+    outputs: [],
   },
   {
     type: "event",
@@ -182,6 +262,15 @@ export const reusableWalletAbi = [
       { indexed: false, name: "maxSpend", type: "uint256" },
       { indexed: false, name: "expiresAt", type: "uint64" },
       { indexed: false, name: "maxUses", type: "uint32" },
+    ],
+  },
+  {
+    type: "event",
+    name: "PermissionUsed",
+    inputs: [
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: false, name: "uses", type: "uint32" },
+      { indexed: false, name: "spent", type: "uint256" },
     ],
   },
   {
@@ -209,6 +298,25 @@ export const reusableWalletAbi = [
       { indexed: false, name: "amount", type: "uint256" },
     ],
   },
+  {
+    type: "event",
+    name: "PaymentApproved",
+    inputs: [
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "payTo", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" },
+      { indexed: false, name: "nonce", type: "bytes32" },
+      { indexed: false, name: "digest", type: "bytes32" },
+    ],
+  },
+  {
+    type: "event",
+    name: "OwnershipTransferred",
+    inputs: [
+      { indexed: true, name: "previousOwner", type: "address" },
+      { indexed: true, name: "newOwner", type: "address" },
+    ],
+  },
   { type: "error", name: "NotOwner", inputs: [] },
   { type: "error", name: "NotAgent", inputs: [] },
   { type: "error", name: "PermissionNotFound", inputs: [] },
@@ -219,6 +327,11 @@ export const reusableWalletAbi = [
   { type: "error", name: "SpendLimitExceeded", inputs: [] },
   { type: "error", name: "TransferFailed", inputs: [] },
   { type: "error", name: "CallFailed", inputs: [{ name: "data", type: "bytes" }] },
+  { type: "error", name: "NotTokenPermission", inputs: [] },
+  { type: "error", name: "NotNativePermission", inputs: [] },
+  { type: "error", name: "AuthorizationOutlivesPermission", inputs: [] },
+  { type: "error", name: "NonceAlreadyApproved", inputs: [] },
+  { type: "error", name: "InvalidAuthorizationWindow", inputs: [] },
 ] as const;
 
 export const merchantAbi = [

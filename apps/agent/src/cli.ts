@@ -36,7 +36,10 @@ const wallet: Address = walletPart;
 const permissionId = permissionPart === undefined ? undefined : BigInt(permissionPart);
 
 const rpc = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-const publicClient = createPublicClient({ chain: foundry, transport: http(rpc) });
+// Local Anvil either way: 31337 from npm run demo, 84532 when npm run x402:local forks Base Sepolia.
+const chainId = await createPublicClient({ transport: http(rpc) }).getChainId();
+const chain = chainId === foundry.id ? foundry : { ...foundry, id: chainId, name: `Local fork (${chainId})` };
+const publicClient = createPublicClient({ chain, transport: http(rpc) });
 
 type Limits = { agent: Address; merchant: Address; left: bigint; usesLeft: number; expiresAt: bigint; status: string };
 
@@ -56,13 +59,14 @@ async function readCard(): Promise<Limits> {
       status: cancelled ? "cancelled" : used ? "used" : "active",
     };
   }
-  const [agent, merchant, maxSpend, spent, expiresAt, maxUses, uses, revoked] = await publicClient.readContract({
+  const [agent, merchant, maxSpend, spent, expiresAt, maxUses, uses, revoked, asset] = await publicClient.readContract({
     address: wallet,
     abi: reusableWalletAbi,
     functionName: "permissions",
     args: [permissionId],
   });
   if (agent === zeroAddress) throw new Error("No such multi-use card");
+  if (asset !== zeroAddress) throw new Error("That permission pays x402 services in USDC; it isn't a merchant card");
   return {
     agent,
     merchant,
@@ -121,7 +125,7 @@ const warnings = [
 if (warnings.length) console.log(`Heads up: ${warnings.join(", ")}. Sending anyway; the card decides.`);
 
 const data = encodeFunctionData({ abi: merchantAbi, functionName: "buy", args: [BigInt(decision.itemId), BigInt(decision.quantity)] });
-const walletClient = createWalletClient({ account: card.agent, chain: foundry, transport: http(rpc) });
+const walletClient = createWalletClient({ account: card.agent, chain, transport: http(rpc) });
 
 // A fixed gas limit skips estimation, so over-limit attempts are mined as reverts and show up as blocked in the app.
 const gas = 500_000n;

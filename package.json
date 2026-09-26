@@ -7,7 +7,12 @@
   ],
   "scripts": {
     "demo": "node scripts/demo.mjs",
+    "x402:local": "node scripts/x402-local.mjs",
     "agent": "npm --workspace @eaw/agent run start",
-    "web": "npm --workspace @eaw/web run dev"
+    "web": "npm --workspace @eaw/web run dev",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4"
   }
 }

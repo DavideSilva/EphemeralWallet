@@ -8,14 +8,19 @@ import { useMerchants, useSnapshot } from "@/lib/hooks";
 import type { Snapshot } from "@/lib/data";
 
 export function WithSnapshot({ children }: { children: (snapshot: Snapshot) => ReactNode }) {
-  const { data, error, isPending } = useSnapshot();
+  const { data, error: snapshotError, isPending } = useSnapshot();
+  // The snapshot query waits for merchants, so a merchants failure (e.g. missing VITE_* addresses) must surface here
+  // or the page would show the loading state forever.
+  const { error: merchantsError } = useMerchants();
+  const error = snapshotError ?? merchantsError;
   if (error && !data) {
     return (
       <div className="max-w-lg rounded-xl border border-void/30 bg-void/5 p-6">
-        <h2 className="font-semibold text-void">Can't reach the local chain</h2>
+        <h2 className="font-semibold text-void">Can't load your cards</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          The app reads cards from Anvil at 127.0.0.1:8545. Start everything with <code className="font-mono">npm run demo</code>, then
-          reload this page.
+          The app reads cards from Anvil at 127.0.0.1:8545 and needs the addresses of the contracts deployed there. Start
+          everything with <code className="font-mono">npm run demo</code> or <code className="font-mono">npm run x402:local</code>,
+          then reload this page.
         </p>
         <p className="mt-3 font-mono text-xs break-all text-muted-foreground">{error.message.split("\n")[0]}</p>
       </div>

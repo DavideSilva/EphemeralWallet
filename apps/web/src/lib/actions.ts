@@ -1,4 +1,4 @@
-import { parseEventLogs, type Address } from "viem";
+import { parseEventLogs, zeroAddress, type Address } from "viem";
 import { sendTransaction, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import { missionFactoryAbi, missionWalletAbi, reusableFactoryAbi, reusableWalletAbi } from "@shared/abis";
 import { publicClient, wagmiConfig } from "./chain";
@@ -72,7 +72,7 @@ export async function issueCard(input: IssueInput): Promise<string> {
       address: account,
       abi: reusableWalletAbi,
       functionName: "createPermission",
-      args: [input.agent, input.merchant, input.budget, expiresAt, input.maxUses],
+      args: [input.agent, input.merchant, input.budget, expiresAt, input.maxUses, zeroAddress],
     }),
   );
   const [created] = parseEventLogs({ abi: reusableWalletAbi, eventName: "PermissionCreated", logs: receipt.logs });

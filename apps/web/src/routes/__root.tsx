@@ -1,4 +1,4 @@
-import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
+import { Link, Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useBalance, useConnection } from "wagmi";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ const navLink =
 
 function Root() {
   useChainRefresh();
+  // The owner chip and "Issue card" belong to the Anvil card demo; the x402 Payments page has its own wallets.
+  const onPayments = useLocation({ select: location => location.pathname.startsWith("/payments") });
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-border/70 bg-paper/90 backdrop-blur">
@@ -28,15 +30,20 @@ function Root() {
             <Link to="/activity" className={navLink}>
               Activity
             </Link>
+            <Link to="/payments" className={navLink}>
+              Payments
+            </Link>
           </nav>
-          <div className="ml-auto flex items-center gap-3">
-            <OwnerChip />
-            <Button asChild size="sm">
-              <Link to="/cards/new">
-                <Plus /> <span className="hidden sm:inline">Issue card</span>
-              </Link>
-            </Button>
-          </div>
+          {!onPayments && (
+            <div className="ml-auto flex items-center gap-3">
+              <OwnerChip />
+              <Button asChild size="sm">
+                <Link to="/cards/new">
+                  <Plus /> <span className="hidden sm:inline">Issue card</span>
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
       </header>
       <main className="mx-auto max-w-[90rem] px-4 pt-8 pb-24 sm:px-8 sm:pt-12 lg:px-12">

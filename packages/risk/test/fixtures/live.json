@@ -1,0 +1,65 @@
+{
+  "riskyQuick": {
+    "toxicScore": 100,
+    "traits": [
+      {
+        "name": "known_scammer",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address has a confirmed history of malicious activity, including scams, phishing, or other harmful behavior."
+      },
+      {
+        "name": "attack_money_target",
+        "risk": 85,
+        "txsCount": 0,
+        "description": "The address has received funds tied to exploits, wallet drainers, or other forms of attack‑related activity."
+      }
+    ]
+  },
+  "riskyDeep": {
+    "toxicScore": 100,
+    "traits": [
+      {
+        "name": "known_scammer",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address has a confirmed history of malicious activity, including scams, phishing, or other harmful behavior."
+      },
+      {
+        "name": "attack_money_target",
+        "risk": 85,
+        "txsCount": 0,
+        "description": "The address has received funds tied to exploits, wallet drainers, or other forms of attack‑related activity."
+      },
+      {
+        "name": "fake_phishing_transfer",
+        "risk": 17.58,
+        "txsCount": 21,
+        "description": "The address appears in transaction histories involving transfers linked to scam activity or phishing‑related operations."
+      }
+    ]
+  },
+  "riskyOverview": {
+    "isContract": false,
+    "txCount": 46,
+    "firstTxDate": "2024-10-25T01:37:59.000Z"
+  },
+  "cleanQuick": {
+    "toxicScore": 0,
+    "traits": []
+  },
+  "cleanDeep": {
+    "toxicScore": 0,
+    "traits": []
+  },
+  "usdc": {
+    "riskLevel": "neutral",
+    "trust": "whitelist",
+    "action": "info",
+    "detectors": []
+  },
+  "authorization": {
+    "riskGroup": "Low",
+    "detectors": []
+  }
+}

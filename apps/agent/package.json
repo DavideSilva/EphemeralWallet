@@ -4,15 +4,23 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/cli.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "daemon": "tsx src/x402/daemon.ts",
+    "x402:setup": "tsx src/x402/setup.ts",
+    "x402:demo": "tsx src/x402/demo.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "@eaw/risk": "*",
+    "@x402/core": "2.10.0",
+    "@x402/evm": "2.10.0",
     "viem": "^2.56.9"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
     "tsx": "^4.19.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^2.1.0"
   }
 }

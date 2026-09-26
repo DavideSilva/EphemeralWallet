@@ -8,7 +8,7 @@ import {
 } from "@shared/abis";
 import { decodePurchase, describeRevert, revertData } from "@shared/revert";
 import { publicClient } from "./chain";
-import { contracts } from "./config";
+import { contracts, FROM_BLOCK } from "./config";
 
 export type Merchant = { address: Address; name: string; items: readonly { name: string; price: bigint }[] };
 
@@ -107,7 +107,7 @@ async function timestamps(blocks: bigint[]) {
 const at = (block: bigint) => blockTimes.get(block) ?? 0;
 
 type BlockedScan = { chainStart: Hex | undefined; scannedTo: bigint; found: Activity[] };
-const scan: BlockedScan = { chainStart: undefined, scannedTo: -1n, found: [] };
+const scan: BlockedScan = { chainStart: undefined, scannedTo: FROM_BLOCK - 1n, found: [] };
 
 async function scanBlocked(
   toBlock: bigint,
@@ -172,10 +172,10 @@ async function scanBlocked(
 }
 
 async function resetIfChainRestarted(toBlock: bigint) {
-  const genesis = (await publicClient.getBlock({ blockNumber: 0n })).hash;
+  const genesis = (await publicClient.getBlock({ blockNumber: FROM_BLOCK })).hash;
   if (scan.chainStart !== genesis || toBlock < scan.scannedTo) {
     scan.chainStart = genesis;
-    scan.scannedTo = -1n;
+    scan.scannedTo = FROM_BLOCK - 1n;
     scan.found = [];
     blockTimes.clear();
   }
@@ -196,7 +196,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
       abi: missionFactoryAbi,
       eventName: "MissionCreated",
       args: { owner },
-      fromBlock: 0n,
+      fromBlock: FROM_BLOCK,
       toBlock,
     }),
     publicClient.readContract({
@@ -212,7 +212,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
 
   const [missionEvents, missionFlags, accountEvents, accountBalance, permissionCount] = await Promise.all([
     missionWallets.length
-      ? publicClient.getContractEvents({ address: missionWallets, abi: missionWalletAbi, fromBlock: 0n, toBlock })
+      ? publicClient.getContractEvents({ address: missionWallets, abi: missionWalletAbi, fromBlock: FROM_BLOCK, toBlock })
       : Promise.resolve([]),
     Promise.all(
       missionWallets.map(address =>
@@ -224,7 +224,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
       ),
     ),
     account
-      ? publicClient.getContractEvents({ address: account, abi: reusableWalletAbi, fromBlock: 0n, toBlock })
+      ? publicClient.getContractEvents({ address: account, abi: reusableWalletAbi, fromBlock: FROM_BLOCK, toBlock })
       : Promise.resolve([]),
     account ? publicClient.getBalance({ address: account, blockNumber: toBlock }) : Promise.resolve(0n),
     account
@@ -299,7 +299,8 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
 
   if (account) {
     const created = accountEvents.filter(e => e.eventName === "PermissionCreated");
-    permissions.forEach(([agent, allowedTarget, maxSpend, spent, expiresAt, maxUses, uses, revoked], i) => {
+    permissions.forEach(([agent, allowedTarget, maxSpend, spent, expiresAt, maxUses, uses, revoked, asset], i) => {
+      if (asset !== zeroAddress) return; // USDC (x402) payment permissions aren't merchant cards
       const id = cardId(account, BigInt(i));
       const log = created.find(e => e.eventName === "PermissionCreated" && e.args.permissionId === BigInt(i));
       const base = {
