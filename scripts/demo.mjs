@@ -52,14 +52,14 @@ try {
   await waitForRpc();
 
   const contractsDir = "packages/contracts";
-  const deps = spawnSync("forge", ["install", "foundry-rs/forge-std", "--no-git"], {
-    cwd: contractsDir,
-    encoding: "utf8"
-  });
-  if (deps.status !== 0 && !deps.stderr.includes("already exists")) {
-    console.error(deps.stdout);
-    console.error(deps.stderr);
-    throw new Error("Could not install forge-std");
+  // lib/ is gitignored, so the Solidity dependencies are installed on first run.
+  for (const dep of ["foundry-rs/forge-std", "vectorized/solady@v0.1.26"]) {
+    const deps = spawnSync("forge", ["install", dep, "--no-git"], { cwd: contractsDir, encoding: "utf8" });
+    if (deps.status !== 0 && !deps.stderr.includes("already exists")) {
+      console.error(deps.stdout);
+      console.error(deps.stderr);
+      throw new Error(`Could not install ${dep}`);
+    }
   }
 
   console.log("Deploying demo contracts...");

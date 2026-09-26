@@ -91,17 +91,20 @@ function start(label, command, args, env) {
 
 try {
   console.log(`Forking Base Sepolia (${forkUrl}) into a local Anvil chain...`);
-  start("anvil", "anvil", ["--fork-url", forkUrl, "--silent"], process.env);
+  // --hardfork osaka: a fork doesn't get Base's P-256 precompile (0x100) by default; the passkey approval plugin needs it.
+  start("anvil", "anvil", ["--fork-url", forkUrl, "--hardfork", "osaka", "--silent"], process.env);
   await waitFor(rpcIsRunning, "Anvil");
   if ((await rpcCall("eth_chainId")) !== "0x14a34") throw new Error("fork is not Base Sepolia (chain id 84532)");
   // The web app reads events and blocks from here on: earlier blocks live on the public RPC.
   const fromBlock = BigInt(await rpcCall("eth_blockNumber")) + 1n;
 
   const contractsDir = "packages/contracts";
-  const deps = spawnSync("forge", ["install", "foundry-rs/forge-std", "--no-git"], { cwd: contractsDir, encoding: "utf8" });
-  if (deps.status !== 0 && !deps.stderr.includes("already exists")) {
-    console.error(deps.stdout, deps.stderr);
-    throw new Error("Could not install forge-std");
+  for (const dep of ["foundry-rs/forge-std", "vectorized/solady@v0.1.26"]) {
+    const deps = spawnSync("forge", ["install", dep, "--no-git"], { cwd: contractsDir, encoding: "utf8" });
+    if (deps.status !== 0 && !deps.stderr.includes("already exists")) {
+      console.error(deps.stdout, deps.stderr);
+      throw new Error(`Could not install ${dep}`);
+    }
   }
 
   // The full card deployment: its ReusableWalletFactory also creates the x402 wallets.
