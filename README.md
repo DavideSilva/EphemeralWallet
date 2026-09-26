@@ -123,13 +123,11 @@ Origins must match exactly (`localhost` and `127.0.0.1` are different origins): 
 
 ### Intercepta API feedback
 
-> TODO before submission: fill in 3–5 lines from the live run (time to first call, confusions, gaps).
-
-Observed so far (from the docs, pre-key):
-
-- Scan Message's `chainId` enum only lists mainnets, so testnet x402 authorizations must be rewritten to a mainnet domain for screening.
-- Scan Message's documented `messageType` enum has no `TransferWithAuthorization` (EIP-3009), the message x402 uses.
-- The numeric scale of trait `risk` in address scans is not documented.
+- **Time to first call:** minutes once we had the key. A plain `X-API-KEY` header and clear OpenAPI pages made it easy; our 7-call smoke run (`packages/risk/scripts/smoke.ts`) takes about 9 s end to end.
+- **Confusing:** Scan Message's documented `messageType` enum has no `TransferWithAuthorization` (EIP-3009, what x402 signs), yet the endpoint accepts it and returns a `riskGroup`. We only found that out by trying.
+- **Confusing:** the trait `risk` scale isn't documented. Live responses show 0–100 with fractional values (e.g. `fake_phishing_transfer` at 0.54), so we had to guess thresholds.
+- **Missing:** Scan Message rated a transfer *to a sanctioned address* as `Low`. It doesn't factor in the recipient's own risk, so we screen `payTo` separately with the address scans.
+- **Missing:** no testnet chain ids. x402 runs on testnets, so we rewrite the EIP-712 domain to Base mainnet (chain 8453, mainnet USDC) purely for screening.
 
 ## Structure
 

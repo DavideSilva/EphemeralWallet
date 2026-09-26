@@ -1,0 +1,83 @@
+{
+  "riskyQuick": {
+    "toxicScore": 100,
+    "traits": [
+      {
+        "name": "known_scammer",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address has a confirmed history of malicious activity, including scams, phishing, or other harmful behavior."
+      },
+      {
+        "name": "sanction_address",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address is officially listed as sanctioned and poses significant legal and financial risks."
+      },
+      {
+        "name": "blacklist",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address appears on external or internal blacklist sources due to prior involvement in high‑risk or malicious activity."
+      }
+    ]
+  },
+  "riskyDeep": {
+    "toxicScore": 100,
+    "traits": [
+      {
+        "name": "known_scammer",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address has a confirmed history of malicious activity, including scams, phishing, or other harmful behavior."
+      },
+      {
+        "name": "sanction_address",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address is officially listed as sanctioned and poses significant legal and financial risks."
+      },
+      {
+        "name": "blacklist",
+        "risk": 100,
+        "txsCount": 0,
+        "description": "The address appears on external or internal blacklist sources due to prior involvement in high‑risk or malicious activity."
+      },
+      {
+        "name": "sanction_address_communication",
+        "risk": 85,
+        "txsCount": 16,
+        "description": "The address has interacted with sanctioned entities, which may expose users to compliance or regulatory risks."
+      },
+      {
+        "name": "fake_phishing_transfer",
+        "risk": 0.54,
+        "txsCount": 19,
+        "description": "The address appears in transaction histories involving transfers linked to scam activity or phishing‑related operations."
+      }
+    ]
+  },
+  "riskyOverview": {
+    "isContract": false,
+    "txCount": 1537,
+    "firstTxDate": "2022-03-23T13:29:09.000Z"
+  },
+  "cleanQuick": {
+    "toxicScore": 0,
+    "traits": []
+  },
+  "cleanDeep": {
+    "toxicScore": 0,
+    "traits": []
+  },
+  "usdc": {
+    "riskLevel": "neutral",
+    "trust": "whitelist",
+    "action": "info",
+    "detectors": []
+  },
+  "authorization": {
+    "riskGroup": "Low",
+    "detectors": []
+  }
+}
