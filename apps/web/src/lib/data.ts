@@ -1,4 +1,4 @@
-import { decodeAbiParameters, decodeFunctionData, slice, zeroAddress, type Address, type Hex } from "viem";
+import { decodeAbiParameters, decodeFunctionData, parseAbiItem, slice, zeroAddress, type Address, type Hex } from "viem";
 import {
   approvalHookAbi,
   merchantAbi,
@@ -79,9 +79,17 @@ export type Activity = {
   summary?: string;
   reason?: string;
   held?: Held;
+  /**
+   * x402 card payments only. The card approved the payment, but USDC moves only when the seller settles it:
+   * "pending" can still settle, "lapsed" never will (its authorization expired unsettled).
+   */
+  payment?: PaymentState;
 };
 
-export type Account = { address: Address; balance: bigint; usdc: bigint };
+export type PaymentState = "settled" | "pending" | "lapsed";
+
+/** `pendingUsdc`: approved x402 payments that may still settle, so it must stay in the account. */
+export type Account = { address: Address; balance: bigint; usdc: bigint; pendingUsdc: bigint };
 
 export type Snapshot = {
   owner: Address;
@@ -238,7 +246,35 @@ async function resetIfChainRestarted(toBlock: bigint) {
     scan.scannedTo = FROM_BLOCK - 1n;
     scan.found = [];
     blockTimes.clear();
+    validBefores.clear();
   }
+}
+
+// EIP-3009: USDC emits this when an authorization settles (or is cancelled), keyed by the paying wallet.
+const authorizationUsed = parseAbiItem("event AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce)");
+
+// approvePayment's validBefore, by transaction: the PaymentApproved event doesn't carry it.
+const validBefores = new Map<Hex, number>();
+
+/**
+ * Up to when an approved payment can settle. Falls back to the card's expiry, which approvePayment
+ * guarantees is no earlier, if the approval's calldata can't be read.
+ */
+async function settleableUntil(account: Address, hash: Hex, cardExpiresAt: number): Promise<number> {
+  const cached = validBefores.get(hash);
+  if (cached !== undefined) return cached;
+  let until = cardExpiresAt;
+  try {
+    const tx = await publicClient.getTransaction({ hash });
+    if (tx.to?.toLowerCase() === account.toLowerCase()) {
+      const call = decodeFunctionData({ abi: reusableWalletAbi, data: tx.input });
+      if (call.functionName === "approvePayment") until = Number(call.args[4]);
+    }
+  } catch {
+    // Keep the card's expiry: the later bound, so a payment is never treated as lapsed too early.
+  }
+  validBefores.set(hash, until);
+  return until;
 }
 
 // Orders activity within a block: by transaction, then by log inside it.
@@ -248,7 +284,9 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
   const { missionFactory, reusableFactory } = contracts();
   const toBlock = await publicClient.getBlockNumber();
   await resetIfChainRestarted(toBlock);
-  const now = Date.now() / 1000;
+  // The chain's "now" (the pending block's time), not this computer's clock: card expiry and payment windows are
+  // enforced on chain, and a local fork's clock can drift from this one.
+  const now = Number((await publicClient.getBlock({ blockTag: "pending" })).timestamp);
 
   const [missionLogs, accountAddress] = await Promise.all([
     publicClient.getContractEvents({
@@ -270,7 +308,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
   const account = accountAddress === zeroAddress ? null : accountAddress;
   const missionWallets = missionLogs.map(log => log.args.wallet!);
 
-  const [missionEvents, missionFlags, accountEvents, accountBalance, accountUsdc, permissionCount] = await Promise.all([
+  const [missionEvents, missionFlags, accountEvents, accountBalance, accountUsdc, permissionCount, settled] = await Promise.all([
     missionWallets.length
       ? publicClient.getContractEvents({ address: missionWallets, abi: missionWalletAbi, fromBlock: FROM_BLOCK, toBlock })
       : Promise.resolve([]),
@@ -301,6 +339,11 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
           blockNumber: toBlock,
         })
       : Promise.resolve(0n),
+    account
+      ? publicClient
+          .getLogs({ address: USDC, event: authorizationUsed, args: { authorizer: account }, fromBlock: FROM_BLOCK, toBlock })
+          .then(logs => new Set(logs.map(log => log.args.nonce!.toLowerCase())))
+      : Promise.resolve(new Set<string>()),
   ]);
 
   const permissions = account
@@ -322,6 +365,24 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
     ...missionEvents.map(log => log.blockNumber),
     ...accountEvents.map(log => log.blockNumber),
   ]);
+
+  const payments = new Map<Hex, PaymentState>();
+  let pendingUsdc = 0n;
+  await Promise.all(
+    accountEvents.map(async log => {
+      if (log.eventName !== "PaymentApproved") return;
+      if (settled.has(log.args.nonce!.toLowerCase())) return payments.set(log.transactionHash, "settled");
+      const expiresAt = Number(permissions[Number(log.args.permissionId)]?.[4] ?? 0n);
+      const until = await settleableUntil(account!, log.transactionHash, expiresAt);
+      // EIP-3009 settles only while block.timestamp < validBefore.
+      if (now < until) {
+        payments.set(log.transactionHash, "pending");
+        pendingUsdc += log.args.amount!;
+      } else {
+        payments.set(log.transactionHash, "lapsed");
+      }
+    }),
+  );
 
   const cards: Card[] = [];
   const activity: Activity[] = [];
@@ -452,7 +513,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
         asset: asset && asset !== zeroAddress ? asset : undefined,
       });
     } else if (log.eventName === "PaymentApproved") {
-      // An x402 card's purchase: the card approved this exact USDC payment, which the seller then settles.
+      // An x402 card's purchase: the card approved this exact USDC payment, which the seller then settles (or not).
       const asset = permissions[Number(log.args.permissionId)]?.[8];
       activity.push({
         ...common,
@@ -461,6 +522,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
         value: log.args.amount,
         asset: asset && asset !== zeroAddress ? asset : undefined,
         summary: describePayment(merchants, log.args.payTo!, log.args.amount!),
+        payment: payments.get(log.transactionHash),
       });
     } else if (log.eventName === "Executed") {
       activity.push({
@@ -493,7 +555,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
 
   return {
     owner,
-    account: account ? { address: account, balance: accountBalance, usdc: accountUsdc } : null,
+    account: account ? { address: account, balance: accountBalance, usdc: accountUsdc, pendingUsdc } : null,
     cards,
     activity,
   };

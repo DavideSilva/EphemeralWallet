@@ -74,7 +74,12 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
 
   const title = {
     issued: `Issued a ${kindLabel} card for ${merchant}`,
-    purchase: `Bought ${item.summary ?? "an item"} at ${merchant}`,
+    purchase:
+      item.payment === "pending"
+        ? `Paying for ${item.summary ?? "an item"} at ${merchant}`
+        : item.payment === "lapsed"
+          ? `Payment not collected: ${item.summary ?? "an item"} at ${merchant}`
+          : `Bought ${item.summary ?? "an item"} at ${merchant}`,
     blocked: held
       ? held.state === "waiting"
         ? "Held: waiting for your approval"
@@ -96,13 +101,19 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
         ? `${money(item.value, item.asset)} refunded`
         : item.kind === "issued" && item.value !== undefined
           ? `Budget ${money(item.value, item.asset)}`
-          : undefined;
+          : item.payment === "pending"
+            ? "Approved by the card, waiting for the seller to collect"
+            : item.payment === "lapsed"
+              ? "The seller never collected it, so no USDC left your account. The card still counts it as spent."
+              : undefined;
 
   const amount =
     item.value === undefined || item.kind === "issued"
       ? null
       : item.kind === "purchase"
-        ? `−${formatAmount(item.value, item.asset)}`
+        ? item.payment === "lapsed"
+          ? formatAmount(item.value, item.asset)
+          : `−${formatAmount(item.value, item.asset)}`
         : item.kind === "blocked" || item.kind === "approved"
           ? formatAmount(item.value, item.asset)
           : `+${formatAmount(item.value, item.asset)}`;
@@ -135,10 +146,11 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
             "pt-0.5 text-right font-medium whitespace-nowrap",
             blocked && "text-void/70",
             held && "text-amber-800/80",
+            item.payment === "lapsed" && "text-muted-foreground",
             (item.kind === "refund" || item.kind === "cancelled") && "text-banknote",
           )}
         >
-          <span className={cn(blocked && "line-through")}>{amount}</span>{" "}
+          <span className={cn((blocked || item.payment === "lapsed") && "line-through")}>{amount}</span>{" "}
           <span className="text-xs text-muted-foreground">{unit(item.asset)}</span>
         </span>
       )}

@@ -87,10 +87,11 @@ function Overview({ snapshot }: { snapshot: Snapshot }) {
 function AccountPanel({ account, cards }: { account: Snapshot["account"]; cards: Card[] }) {
   const [busy, setBusy] = useState(false);
   if (!account) return null;
-  // Active USDC cards pay from this balance, so only what they can no longer spend is withdrawable.
+  // Active USDC cards pay from this balance, and payments they already approved settle from it later (even after
+  // the card is cancelled or used up), so only what neither can still claim is withdrawable.
   const reserved = cards
     .filter(c => c.status === "active" && c.asset?.toLowerCase() === USDC.toLowerCase())
-    .reduce((sum, c) => sum + (c.maxSpend > c.spent ? c.maxSpend - c.spent : 0n), 0n);
+    .reduce((sum, c) => sum + (c.maxSpend > c.spent ? c.maxSpend - c.spent : 0n), account.pendingUsdc);
   const freeUsdc = account.usdc > reserved ? account.usdc - reserved : 0n;
 
   async function addFunds() {
