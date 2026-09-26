@@ -17,7 +17,7 @@ function Root() {
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-border/70 bg-paper/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:gap-6 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-[90rem] items-center gap-2 px-4 sm:gap-6 sm:px-8 lg:px-12">
           <Link to="/" className="font-display text-2xl leading-none tracking-tight">
             Ephemeral
           </Link>
@@ -39,7 +39,7 @@ function Root() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 pt-8 pb-24 sm:px-6 sm:pt-12">
+      <main className="mx-auto max-w-[90rem] px-4 pt-8 pb-24 sm:px-8 sm:pt-12 lg:px-12">
         <Outlet />
       </main>
       <Toaster position="bottom-right" />

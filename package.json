@@ -8,7 +8,6 @@
   "scripts": {
     "demo": "node scripts/demo.mjs",
     "agent": "npm --workspace @eaw/agent run start",
-    "web": "npm --workspace @eaw/web run dev",
-    "permission-agent": "npm --workspace @eaw/agent run permission --"
+    "web": "npm --workspace @eaw/web run dev"
   }
 }

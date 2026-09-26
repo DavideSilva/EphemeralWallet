@@ -67,7 +67,7 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
   return (
     <div className="space-y-14">
       <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <div className="space-y-6">
+        <div className="max-w-2xl space-y-6">
           <SecurityCard card={card} size="lg" />
           <Limits card={card} />
         </div>
@@ -88,7 +88,7 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
         </div>
       </div>
 
-      <section className="max-w-3xl">
+      <section className="max-w-5xl">
         <h2 className="mb-3 text-xl font-semibold">Activity on this card</h2>
         {activity.length === 0 ? (
           <p className="text-muted-foreground">Nothing yet. Run the command above and the agent's purchase will appear here.</p>
@@ -113,7 +113,10 @@ function Limits({ card }: { card: Card }) {
 }
 
 function TaskComposer({ card }: { card: Card }) {
+  const merchant = useMerchant(card.merchant);
   const [goal, setGoal] = useState(() => savedGoal(card.id));
+  const first = merchant?.items[0]?.name.toLowerCase();
+  const example = first ? `Buy ${/^[aeiou]/.test(first) ? "an" : "a"} ${first}` : "Describe what to buy";
   return (
     <div className="space-y-3">
       <Label htmlFor="goal" className="text-base font-semibold">
@@ -123,7 +126,7 @@ function TaskComposer({ card }: { card: Card }) {
         id="goal"
         value={goal}
         rows={2}
-        placeholder="Buy two cinema tickets for tonight"
+        placeholder={example}
         onChange={e => {
           setGoal(e.target.value);
           saveGoal(card.id, e.target.value);
@@ -131,7 +134,7 @@ function TaskComposer({ card }: { card: Card }) {
         className="bg-card text-base"
       />
       <p className="text-sm text-muted-foreground">Run this in a terminal at the project root. The agent plans the purchase and the card enforces the limits.</p>
-      <CommandBox command={agentCommand(card.id, goal)} />
+      <CommandBox command={agentCommand(card.id, goal.trim() || example)} />
     </div>
   );
 }

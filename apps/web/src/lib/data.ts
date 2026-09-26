@@ -66,7 +66,7 @@ export function cardId(wallet: Address, permissionId?: bigint): string {
 
 function status(card: Omit<Card, "status">, now: number): CardStatus {
   if (card.cancelled) return "cancelled";
-  if (card.uses >= card.maxUses) return "used";
+  if (card.uses >= card.maxUses || (card.maxSpend > 0n && card.spent >= card.maxSpend)) return "used";
   if (now > card.expiresAt) return "expired";
   return "active";
 }

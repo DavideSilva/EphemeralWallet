@@ -23,7 +23,7 @@ function Overview({ snapshot }: { snapshot: Snapshot }) {
   const shown = active.length ? active : cards.slice(0, 3);
 
   return (
-    <div className="space-y-14">
+    <div className="grid gap-14 xl:grid-cols-[minmax(0,1fr)_27rem] xl:gap-16">
       <section>
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -43,7 +43,7 @@ function Overview({ snapshot }: { snapshot: Snapshot }) {
           <EmptyCards />
         ) : (
           <>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 2xl:grid-cols-3">
               {shown.slice(0, 6).map((card, i) => (
                 <motion.div
                   key={card.id}
@@ -64,8 +64,8 @@ function Overview({ snapshot }: { snapshot: Snapshot }) {
         )}
       </section>
 
-      <section>
-        <div className="mb-3 flex items-baseline justify-between">
+      <section className="xl:border-l xl:border-border/80 xl:pl-10">
+        <div className="mb-3 flex items-baseline justify-between xl:mt-4">
           <h2 className="text-xl font-semibold">Recent activity</h2>
           {activity.length > 0 && (
             <Link to="/activity" className="text-sm font-medium text-intaglio hover:underline">
@@ -76,7 +76,7 @@ function Overview({ snapshot }: { snapshot: Snapshot }) {
         {activity.length === 0 ? (
           <p className="text-muted-foreground">Purchases and blocked attempts show up here as agents use their cards.</p>
         ) : (
-          <ActivityList activity={activity.slice(0, 6)} cards={cards} />
+          <ActivityList activity={activity.slice(0, 7)} cards={cards} />
         )}
       </section>
     </div>

@@ -27,7 +27,7 @@ export function WithSnapshot({ children }: { children: (snapshot: Snapshot) => R
 
 function Loading() {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Loading cards">
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-busy="true" aria-label="Loading cards">
       {[0, 1, 2].map(i => (
         <div key={i} className="aspect-[1.586] animate-pulse rounded-[14px] bg-paper-deep" />
       ))}

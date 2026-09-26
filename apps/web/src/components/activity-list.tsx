@@ -93,8 +93,8 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
           ? eth(item.value)
           : `+${eth(item.value)}`;
 
-  return (
-    <div className="grid grid-cols-[3rem_1.75rem_1fr_auto] items-start gap-x-3 py-3.5 sm:grid-cols-[3.5rem_2rem_1fr_auto]">
+  const row = (
+    <div className="grid grid-cols-[2.75rem_1.75rem_1fr_auto] items-start gap-x-3 py-3.5">
       <span className="pt-0.5 text-sm text-muted-foreground">{time(item.at)}</span>
       <span
         className={cn(
@@ -108,27 +108,30 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
         <p className={cn("font-medium leading-snug", item.kind === "blocked" && "text-void")}>{title}</p>
         {item.memo && <p className="mt-0.5 truncate text-sm text-muted-foreground">“{item.memo}”</p>}
         {detail && <p className="mt-0.5 text-sm text-muted-foreground">{detail}</p>}
-        {showCard && card && (
-          <Link
-            to="/cards/$cardId"
-            params={{ cardId: card.id }}
-            className="mt-1 inline-block text-xs font-medium text-intaglio underline-offset-2 hover:underline"
-          >
-            View card
-          </Link>
-        )}
       </div>
       {amount && (
         <span
           className={cn(
-            "pt-0.5 text-right font-medium",
-            item.kind === "blocked" && "text-void/70 line-through",
-            item.kind === "refund" || item.kind === "cancelled" ? "text-banknote" : "",
+            "pt-0.5 text-right font-medium whitespace-nowrap",
+            item.kind === "blocked" && "text-void/70",
+            (item.kind === "refund" || item.kind === "cancelled") && "text-banknote",
           )}
         >
-          {amount} <span className="text-xs text-muted-foreground no-underline">ETH</span>
+          <span className={cn(item.kind === "blocked" && "line-through")}>{amount}</span>{" "}
+          <span className="text-xs text-muted-foreground">ETH</span>
         </span>
       )}
     </div>
+  );
+
+  if (!showCard || !card) return row;
+  return (
+    <Link
+      to="/cards/$cardId"
+      params={{ cardId: card.id }}
+      className="-mx-2 block rounded-lg px-2 transition-colors hover:bg-paper-deep/70"
+    >
+      {row}
+    </Link>
   );
 }

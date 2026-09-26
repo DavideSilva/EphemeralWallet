@@ -53,9 +53,10 @@ export function SecurityCard({
           <div className="flex items-end justify-between gap-3">
             <div>
               <div className={cn("font-display leading-none", size === "lg" ? "text-3xl" : "text-xl")}>
-                {eth(left)} <span className="text-[0.6em]">ETH left</span>
+                {inactive ? eth(card.spent) : eth(left)}{" "}
+                <span className="text-[0.6em]">{inactive ? "ETH spent" : "ETH left"}</span>
               </div>
-              <div className="mt-1.5 text-[0.72rem] opacity-80">{validity(card.expiresAt)}</div>
+              <div className="mt-1.5 text-[0.72rem] opacity-80">{statusLine(card)}</div>
             </div>
             {card.kind === "multi-use" && (
               <div className="flex flex-col items-end gap-1.5">
@@ -84,6 +85,15 @@ export function SecurityCard({
       {face}
     </Link>
   );
+}
+
+function statusLine(card: CardFace) {
+  if (card.status === "cancelled") return "Cancelled by the owner";
+  if (card.status === "used") {
+    if (card.kind === "one-time") return "Used once, now void";
+    return card.uses >= card.maxUses ? "Every use spent" : "Budget spent";
+  }
+  return validity(card.expiresAt);
 }
 
 function UseMarks({ uses, maxUses }: { uses: number; maxUses: number }) {

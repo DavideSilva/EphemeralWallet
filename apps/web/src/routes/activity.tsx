@@ -6,7 +6,7 @@ export const Route = createFileRoute("/activity")({ component: ActivityPage });
 
 function ActivityPage() {
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <h1 className="font-display text-4xl sm:text-5xl">Activity</h1>
       <p className="mt-2 text-muted-foreground">
         Everything your agents did with their cards, including the attempts the cards refused.

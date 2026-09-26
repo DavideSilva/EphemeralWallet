@@ -47,5 +47,5 @@ export function shellQuote(value: string): string {
 }
 
 export function agentCommand(cardId: string, goal: string): string {
-  return `npm run agent -- ${cardId} ${shellQuote(goal.trim() || "describe the task")}`;
+  return `npm run agent -- ${cardId} ${shellQuote(goal.trim())}`;
 }
