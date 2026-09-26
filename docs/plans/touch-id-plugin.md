@@ -22,10 +22,20 @@ Pitch line: small buys go through on their own; big ones need your fingerprint, 
 
 ## Starting point
 
-- `ReusablePermissionWallet.execute(permissionId, target, value, data, memo)` runs built-in checks and reverts with custom errors. The app shows reverted `execute` transactions as "Blocked" with a decoded reason (`apps/web/src/lib/data.ts` scans blocks and traces reverts).
+Based on `main` @ ebd1cc9 (after #7, x402 payments with Intercepta screening).
+
+- `ReusablePermissionWallet` has two ways to spend. Both call `_consume()`, which runs the built-in checks and consumes uses and budget in one step:
+  - `execute(permissionId, target, value, data, memo)`: merchant purchases in ETH. **This plan covers this path.**
+  - `approvePayment(...)`: x402 payments in USDC.
+- `createPermission` takes 6 arguments; the last is `asset` (`address(0)` = ETH).
+- The `permissions()` tuple has 9 fields, with `asset` last.
+- `owner` can change (`transferOwnership`).
+- Custom errors are decoded by the app. The app shows reverted `execute` transactions as "Blocked" with a decoded reason (`apps/web/src/lib/data.ts` scans blocks and traces reverts).
 - The one-time card (`EphemeralMissionWallet`) is **not changed**.
 - The agent CLI (`apps/agent/src/cli.ts`) sends `execute` with a fixed 500k gas limit so over-limit attempts are mined as reverts.
-- The web app signs as Anvil account #0 with no wallet popups.
+- The web app signs as Anvil account #0 with no wallet popups. It reads events and blocks from `FROM_BLOCK` (0 on a fresh chain, the fork point on the Base Sepolia fork).
+- x402 payments already have an **off-chain** owner approval: the agent can HOLD a payment and the owner approves or rejects it on `/payments` through the agent daemon. That flow is separate from this plan.
+- `CLAUDE.md` rules that apply here: keep `SPEC.md` in sync with contract changes, and update `packages/shared/src/abis.ts` whenever a signature or the `permissions` tuple changes.
 
 ## Build in two stages
 
@@ -54,11 +64,13 @@ interface IPermissionHook {
 ### 2. Wallet changes — `ReusablePermissionWallet.sol`
 
 - `struct Hook { address hook; bytes config; }`, stored per permission, **fixed at creation**. To change rules, revoke and reissue.
-- `createPermissionWithHooks(agent, target, maxSpend, expiresAt, maxUses, Hook[] hooks)` (owner only). The existing `createPermission` is unchanged and creates a permission with no hooks.
+- `createPermissionWithHooks(agent, target, maxSpend, expiresAt, maxUses, asset, Hook[] hooks)` (owner only), with the same arguments as `createPermission` plus the hooks. The existing `createPermission` is unchanged and creates a permission with no hooks.
+- Hooks are only allowed on native (`asset == address(0)`) permissions for now, since only `execute` runs them. Otherwise revert `HooksNeedNativePermission`.
 - Reject: a hook address with no code, the same hook twice, more than 4 hooks.
 - `hooksOf(permissionId) view returns (Hook[])`; event `HookAttached(permissionId, hook, config)`.
 - `execute` signature and the `permissions()` getter tuple are **unchanged** (`data.ts` destructures it by position).
-- Inside `execute`: built-in checks → each hook's `beforeExecute` → consume uses/spend → call merchant → events.
+- Inside `execute`: `_consume()` (built-in checks + consume uses/spend) → native-asset and target checks → each hook's `beforeExecute` → call merchant → events. If a hook reverts, the consumption is rolled back with it.
+- `approvePayment` does not run hooks in this plan.
 - A hook's rejection is wrapped as `HookRejected(address hook, bytes reason)` so a hook can't impersonate a built-in error; `revert.ts` decodes the inner reason.
 - Add a reentrancy guard on `execute`.
 
@@ -86,18 +98,22 @@ State:
 
 The plugin's constructor, or `Deploy.s.sol`, asserts `P256.hasPrecompileOrVerifier()`. Without the precompile every signature would silently fail.
 
-> **Decision needed — per purchase or running total?** As designed, the threshold applies **per purchase**: an agent held on 5 tickets could buy 1 ticket five times (bounded only by the card's budget and uses). The alternative counts spend since the last approval (`spent + value > threshold` → approval needed). Per purchase is simpler; running total closes the split-order gap. The team picks one before PR 3.
+> **Decided: per purchase.** The threshold applies to each purchase on its own. Known gap: an agent held on 5 tickets could buy 1 ticket five times, bounded only by the card's budget and uses. `SPEC.md` will say so. (The rejected alternative counted spend since the last approval.)
 
 ### 4. Chain and tooling
 
-- `foundry.toml`: `evm_version = "osaka"`. This was tested with solc 0.8.24: the precompile is reachable, `vm.signP256` + `WebAuthn.verify` pass, and all 30 existing tests pass. The `--evm-version` CLI flag does **not** enable it; only the config setting does.
-- `scripts/demo.mjs`: `anvil --hardfork osaka`; install solady v0.1.26 next to forge-std (`lib/` is gitignored). Run the existing demo once on osaka before other changes.
+- `foundry.toml`: `evm_version = "osaka"`, so forge tests reach the P-256 precompile. This was tested with solc 0.8.24: the precompile is reachable, `vm.signP256` + `WebAuthn.verify` pass, and the existing tests still pass. The `--evm-version` CLI flag does **not** enable it; only the config setting does. Re-run the whole suite after the rebase onto #7.
+- P-256 precompile at `0x100`, tested with a real signature:
+  - **Plain Anvil (`npm run demo`):** available by default; no flag needed.
+  - **Anvil fork of Base Sepolia (`npm run x402:local`):** **not** available by default, even though real Base Sepolia has it. It works with `--hardfork osaka` or `--optimism`. Add `--hardfork osaka` to `scripts/x402-local.mjs`, since that script also deploys the card contracts.
+  - **Live chains:** Ethereum mainnet (EIP-7951), Base, Base Sepolia, Optimism and Arbitrum One all return valid.
+- `scripts/demo.mjs` and `scripts/x402-local.mjs`: install solady v0.1.26 next to forge-std (`lib/` is gitignored).
 - `.github/workflows/contracts.yml`: install solady.
 - `Deploy.s.sol`: deploy `ApprovalHook`, log it; `demo.mjs` passes it as `VITE_APPROVAL_HOOK`.
 
 ### 5. Shared package
 
-- `abis.ts`: wallet additions (`createPermissionWithHooks`, `hooksOf`, `HookAttached`, new errors) and an `approvalHookAbi`.
+- `abis.ts`: wallet additions (`createPermissionWithHooks`, `hooksOf`, `HookAttached`, new errors) and an `approvalHookAbi`. The `permissions` tuple stays at 9 fields.
 - `revert.ts`:
   - Add `revertName()`, which returns the error name, so code branches on names, never on display text.
   - Decode `HookRejected` → inner hook error.
@@ -122,7 +138,7 @@ The plugin's constructor, or `Deploy.s.sol`, asserts `P256.hasPrecompileOrVerifi
   - Add a "reset passkey" link.
 - **Blocked activity (`data.ts`):**
   - Carry structured `request {wallet, permissionId, target, value, data}` and `errorName` on each blocked item.
-  - Work out approval state from the plugin's `Approved`/`ApprovalUsed` events on every snapshot, not from `approvedUntil`, because the blocked-scan cache is per block.
+  - Work out approval state from the plugin's `Approved`/`ApprovalUsed` events on every snapshot, not from `approvedUntil`, because the blocked-scan cache is per block. Read the events from `FROM_BLOCK`, like the rest of `data.ts`.
   - Labels: **Held: waiting for Touch ID** (amber) → **Approved** → the following **Bought** row.
 - **Approval banner:** on the card page, not in the activity row (the row is a link). It shows the purchase **decoded from calldata**: item, quantity, amount and merchant, never the agent's memo.
   - Stage B: prefetch the challenge, then call `toWebAuthnAccount({credential}).sign({hash: challenge})`. This gives `authenticatorData`, `clientDataJSON`, `challengeIndex`, `typeIndex` and a low-s `(r, s)`, matching solady's `WebAuthnAuth`.
@@ -134,7 +150,8 @@ The plugin's constructor, or `Deploy.s.sol`, asserts `P256.hasPrecompileOrVerifi
 
 - **Wallet:**
   - hooks run and can hold a purchase with nothing consumed;
-  - `createPermission` without hooks behaves as before (all 30 existing tests pass);
+  - `createPermission` without hooks behaves as before (all existing tests, including the x402 ones from #7, still pass);
+  - hooks on a token permission are rejected;
   - rejects hooks with no code, duplicate hooks, and more than 4 hooks;
   - only the owner can issue;
   - `HookRejected` wraps the reason;
@@ -170,6 +187,9 @@ Each PR targets the one before it, so each is small and reviewable on its own.
 ## Out of scope
 
 - The one-time card.
+- x402 payments (`approvePayment`) and the existing off-chain HOLD approval on `/payments`. Two possible follow-ups, not decided:
+  - run plugins on `approvePayment` too;
+  - use Touch ID for x402 HOLD approvals.
 - Declining without reverting ("soft deny"): only needed for plugins that must remember a blocked attempt.
 - An extra `hookData` argument on `execute`: the approval travels on-chain through `approve()`.
 - `afterExecute`, other plugins, hiding limits from the agent, hardware.
@@ -192,4 +212,11 @@ Reviewed by three Claude agents (security, product and simplicity, WebAuthn and 
 - the `HookRejected` wrapper and the reentrancy guard;
 - dropping `afterExecute`;
 - the osaka `evm_version` setting, verified by experiment;
-- the open decision on per-purchase vs running-total thresholds.
+- the per-purchase vs running-total decision (decided: per purchase).
+
+Updated after rebasing onto #7 (x402 payments):
+- matched the new `createPermission`/`_consume` shape and 9-field tuple;
+- limited hooks to native permissions;
+- `FROM_BLOCK` for event reads;
+- P-256 availability per environment, tested (the x402 fork needs `--hardfork osaka`);
+- x402 payments listed as out of scope.
