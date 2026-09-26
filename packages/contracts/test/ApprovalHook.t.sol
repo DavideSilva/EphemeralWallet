@@ -143,6 +143,13 @@ contract ApprovalHookTest is Test {
         vm.stopPrank();
     }
 
+    function testUnaffordablePurchaseSaysInsufficientFundsInsteadOfAskingForApproval() public {
+        vm.deal(address(wallet), 0.01 ether);
+        vm.expectRevert(ReusablePermissionWallet.InsufficientFunds.selector);
+        vm.prank(agent);
+        wallet.execute(card, address(shop), 0.025 ether, buy(5), "five tickets");
+    }
+
     function testThresholdOf() public view {
         assertEq(hook.thresholdOf(address(wallet), card), THRESHOLD);
     }
