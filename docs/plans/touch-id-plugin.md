@@ -197,7 +197,8 @@ Each PR targets the one before it, so each is small and reviewable on its own.
 ## Deviations from this plan
 
 - solady is installed in PR 5 (where it is first used) rather than PR 1, together with `--hardfork osaka` for the Base
-  Sepolia fork. Plain Anvil already has the P-256 precompile, so `demo.mjs` needed no hardfork flag.
+  Sepolia fork. Plain Anvil 1.6 has the P-256 precompile by default, but after review `demo.mjs` also passes
+  `--hardfork osaka` so the demo doesn't depend on that default.
 - The approval plugin keeps both modes: threshold-only config means the owner account approves (Stage A), a config with
   a passkey means only the passkey can (Stage B). The app defaults to Touch ID when the browser supports passkeys.
 - Verification used headless Chromium with a CDP virtual authenticator in place of Touch ID; a physical Touch ID run on
