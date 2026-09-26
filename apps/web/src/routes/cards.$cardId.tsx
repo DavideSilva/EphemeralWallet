@@ -107,7 +107,12 @@ function Limits({ card }: { card: Card }) {
     <div className="grid gap-5 rounded-xl border border-border bg-card p-5 sm:grid-cols-3">
       <Meter label={`${eth(card.spent)} of ${eth(card.maxSpend)} ETH spent`} value={Number(card.spent)} max={Number(card.maxSpend)} />
       <Meter label={`${card.uses} of ${card.maxUses} ${card.maxUses === 1 ? "use" : "uses"}`} value={card.uses} max={card.maxUses} />
-      <Meter label={validity(card.expiresAt)} value={elapsed} max={total} tone="intaglio" />
+      <Meter
+        label={card.status === "active" || card.status === "expired" ? validity(card.expiresAt) : "No longer usable"}
+        value={card.status === "active" ? elapsed : total}
+        max={total}
+        tone="intaglio"
+      />
     </div>
   );
 }
