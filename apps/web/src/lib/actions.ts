@@ -1,9 +1,9 @@
-import { parseEventLogs, zeroAddress, type Address } from "viem";
+import { encodeAbiParameters, parseEventLogs, zeroAddress, type Address } from "viem";
 import { sendTransaction, waitForTransactionReceipt, writeContract } from "wagmi/actions";
-import { missionFactoryAbi, missionWalletAbi, reusableFactoryAbi, reusableWalletAbi } from "@shared/abis";
+import { approvalHookAbi, missionFactoryAbi, missionWalletAbi, reusableFactoryAbi, reusableWalletAbi } from "@shared/abis";
 import { publicClient, wagmiConfig } from "./chain";
-import { contracts } from "./config";
-import { cardId, type Card } from "./data";
+import { approvalHook, contracts } from "./config";
+import { cardId, type Card, type Held } from "./data";
 
 export type IssueInput = {
   kind: "one-time" | "multi-use";
@@ -14,6 +14,8 @@ export type IssueInput = {
   maxUses: number;
   validFor: number;
   accountFunding: bigint;
+  /** Multi-use only: purchases above this need the owner's approval. */
+  approvalThreshold?: bigint;
 };
 
 async function confirm(hash: `0x${string}`) {
@@ -67,13 +69,30 @@ export async function issueCard(input: IssueInput): Promise<string> {
     account = created.args.wallet;
   }
 
+  const hook = approvalHook();
+  if (input.approvalThreshold !== undefined && !hook) throw new Error("The approval plugin isn't deployed. Restart the demo.");
   const receipt = await confirm(
-    await writeContract(wagmiConfig, {
-      address: account,
-      abi: reusableWalletAbi,
-      functionName: "createPermission",
-      args: [input.agent, input.merchant, input.budget, expiresAt, input.maxUses, zeroAddress],
-    }),
+    input.approvalThreshold !== undefined
+      ? await writeContract(wagmiConfig, {
+          address: account,
+          abi: reusableWalletAbi,
+          functionName: "createPermissionWithHooks",
+          args: [
+            input.agent,
+            input.merchant,
+            input.budget,
+            expiresAt,
+            input.maxUses,
+            zeroAddress,
+            [{ hook: hook!, config: encodeAbiParameters([{ type: "uint256" }], [input.approvalThreshold]) }],
+          ],
+        })
+      : await writeContract(wagmiConfig, {
+          address: account,
+          abi: reusableWalletAbi,
+          functionName: "createPermission",
+          args: [input.agent, input.merchant, input.budget, expiresAt, input.maxUses, zeroAddress],
+        }),
   );
   const [created] = parseEventLogs({ abi: reusableWalletAbi, eventName: "PermissionCreated", logs: receipt.logs });
   if (!created) throw new Error("The card was issued but its number could not be read");
@@ -101,4 +120,18 @@ export async function reclaimCard(card: Card) {
 
 export async function topUp(account: Address, amount: bigint) {
   await confirm(await sendTransaction(wagmiConfig, { to: account, value: amount }));
+}
+
+/** The owner approves one held purchase for the next hour; the waiting agent then retries it. */
+export async function approvePurchase(held: Held) {
+  const block = await publicClient.getBlock();
+  const validUntil = BigInt(Math.max(Math.floor(Date.now() / 1000), Number(block.timestamp)) + 60 * 60);
+  await confirm(
+    await writeContract(wagmiConfig, {
+      address: held.hook,
+      abi: approvalHookAbi,
+      functionName: "approve",
+      args: [held.wallet, held.permissionId, held.target, held.value, held.data, validUntil],
+    }),
+  );
 }

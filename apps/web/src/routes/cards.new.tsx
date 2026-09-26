@@ -22,7 +22,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { issueCard } from "@/lib/actions";
 import { publicClient } from "@/lib/chain";
-import { DEFAULT_AGENT } from "@/lib/config";
+import { approvalHook, DEFAULT_AGENT } from "@/lib/config";
 import type { CardKind } from "@/lib/data";
 import { eth, shortAddress } from "@/lib/format";
 import { saveGoal } from "@/lib/goals";
@@ -86,6 +86,7 @@ function IssueCard() {
   const [goal, setGoal] = useState("");
   const [agent, setAgent] = useState<string>(DEFAULT_AGENT);
   const [funding, setFunding] = useState("0.02");
+  const [approvalOver, setApprovalOver] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
   const isCustom = merchant === "custom";
@@ -103,6 +104,8 @@ function IssueCard() {
   const maxUses = kind === "one-time" ? 1 : Number(uses);
   const needsAccount = kind === "multi-use" && snapshot?.account === null;
   const accountBalance = snapshot?.account?.balance ?? 0n;
+  const canRequireApproval = kind === "multi-use" && Boolean(approvalHook());
+  const approvalThreshold = canRequireApproval && approvalOver.trim() ? parseAmount(approvalOver) : undefined;
 
   const errors = {
     budget: budgetWei === null ? "Enter a budget above 0, like 0.005" : undefined,
@@ -113,6 +116,7 @@ function IssueCard() {
     agent: !isAddress(agent) ? "Enter a valid 0x address" : undefined,
     merchant: isCustom && !merchantReady ? "Enter the merchant's 0x address" : undefined,
     funding: needsAccount && fundingWei === null ? "Enter an amount above 0" : undefined,
+    approval: approvalThreshold === null ? "Enter an amount above 0, or leave it empty" : undefined,
   };
   const valid = !Object.values(errors).some(Boolean) && merchantReady && Boolean(owner);
 
@@ -127,6 +131,7 @@ function IssueCard() {
         maxUses,
         validFor: duration,
         accountFunding: fundingWei ?? 0n,
+        approvalThreshold: approvalThreshold ?? undefined,
       }),
     onSuccess: async cardId => {
       if (goal.trim()) saveGoal(cardId, goal.trim());
@@ -278,6 +283,24 @@ function IssueCard() {
           </Field>
         </fieldset>
 
+        {canRequireApproval && (
+          <Field
+            label="Needs my approval above (ETH, optional)"
+            htmlFor="approval"
+            hint="Any single purchase above this waits until you approve that exact purchase. Leave empty for no approval."
+            error={submitted ? errors.approval : undefined}
+          >
+            <Input
+              id="approval"
+              inputMode="decimal"
+              value={approvalOver}
+              placeholder="0.005"
+              onChange={e => setApprovalOver(e.target.value)}
+              className="bg-card sm:max-w-48"
+            />
+          </Field>
+        )}
+
         {kind === "one-time" && (
           <Field label="Task for the agent (optional)" htmlFor="goal" hint="Saved with the card so its command is ready to copy.">
             <Textarea
@@ -332,6 +355,7 @@ function IssueCard() {
               uses: 0,
               expiresAt: Date.now() / 1000 + duration,
               status: "active",
+              approvalThreshold: approvalThreshold ?? undefined,
             }}
           />
         )}

@@ -1,14 +1,16 @@
-import { decodeFunctionData, zeroAddress, type Address, type Hex } from "viem";
+import { decodeAbiParameters, decodeFunctionData, slice, zeroAddress, type Address, type Hex } from "viem";
 import {
+  approvalHookAbi,
   merchantAbi,
   missionFactoryAbi,
   missionWalletAbi,
   reusableFactoryAbi,
   reusableWalletAbi,
 } from "@shared/abis";
-import { decodePurchase, describeRevert, revertData } from "@shared/revert";
+import { APPROVAL_WAIT_SECONDS } from "@shared/approval";
+import { decodePurchase, decodeRevert, describeRevert, revertData } from "@shared/revert";
 import { publicClient } from "./chain";
-import { contracts, FROM_BLOCK } from "./config";
+import { approvalHook, contracts, FROM_BLOCK } from "./config";
 
 export type Merchant = { address: Address; name: string; items: readonly { name: string; price: bigint }[] };
 
@@ -32,9 +34,24 @@ export type Card = {
   /** Funds held by a one-time card's own wallet; multi-use cards draw from the account instead. */
   balance: bigint;
   status: CardStatus;
+  /** Purchases above this need the owner's approval (the approval plugin is attached). */
+  approvalThreshold?: bigint;
 };
 
-export type ActivityKind = "issued" | "purchase" | "blocked" | "cancelled" | "refund";
+export type ActivityKind = "issued" | "purchase" | "blocked" | "approved" | "cancelled" | "refund";
+
+/** A purchase the approval plugin held, and where its approval stands. */
+export type Held = {
+  hook: Address;
+  requestKey: Hex;
+  wallet: Address;
+  permissionId: bigint;
+  target: Address;
+  value: bigint;
+  data: Hex;
+  /** "timed-out": nobody approved it while the agent was still waiting, so approving now would do nothing. */
+  state: "waiting" | "timed-out" | "approved" | "used" | "expired";
+};
 
 export type Activity = {
   id: string;
@@ -48,6 +65,7 @@ export type Activity = {
   memo?: string;
   summary?: string;
   reason?: string;
+  held?: Held;
 };
 
 export type Account = { address: Address; balance: bigint };
@@ -131,6 +149,8 @@ async function scanBlocked(
       if (receipt.status !== "reverted") continue;
 
       let id: string;
+      let target: Address;
+      let permissionId: bigint | undefined;
       let value: bigint;
       let data: Hex;
       let memo: string;
@@ -138,13 +158,12 @@ async function scanBlocked(
         if (isMission) {
           const call = decodeFunctionData({ abi: missionWalletAbi, data: tx.input });
           if (call.functionName !== "execute") continue;
-          [, value, data, memo] = call.args;
+          [target, value, data, memo] = call.args;
           id = cardId(tx.to!);
         } else {
           const call = decodeFunctionData({ abi: reusableWalletAbi, data: tx.input });
           if (call.functionName !== "execute") continue;
-          const [permissionId] = call.args;
-          [, , value, data, memo] = call.args;
+          [permissionId, target, value, data, memo] = call.args;
           id = cardId(tx.to!, permissionId);
         }
       } catch {
@@ -152,6 +171,21 @@ async function scanBlocked(
       }
 
       const merchant = targetOf.get(id);
+      const revert = await revertData(publicClient.request, tx.hash);
+      const decoded = decodeRevert(revert);
+      const held: Held | undefined =
+        decoded?.name === "ApprovalRequired" && decoded.hook && permissionId !== undefined
+          ? {
+              hook: decoded.hook,
+              requestKey: decoded.args![0] as Hex,
+              wallet: tx.to!,
+              permissionId,
+              target,
+              value,
+              data,
+              state: "waiting",
+            }
+          : undefined;
       scan.found.push({
         id: `blocked-${tx.hash}`,
         kind: "blocked",
@@ -163,7 +197,8 @@ async function scanBlocked(
         value,
         memo,
         summary: merchant ? describePurchase(merchants, merchant, data) : undefined,
-        reason: describeRevert(await revertData(publicClient.request, tx.hash)),
+        reason: describeRevert(revert),
+        held,
       });
     }
   }
@@ -297,6 +332,16 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
     });
   });
 
+  const hook = approvalHook();
+  const thresholds = new Map<bigint, bigint>();
+  if (hook) {
+    for (const e of accountEvents) {
+      if (e.eventName !== "HookAttached" || e.args.hook!.toLowerCase() !== hook.toLowerCase()) continue;
+      const [threshold] = decodeAbiParameters([{ type: "uint256" }], slice(e.args.config!, 0, 32));
+      thresholds.set(e.args.permissionId!, threshold);
+    }
+  }
+
   if (account) {
     const created = accountEvents.filter(e => e.eventName === "PermissionCreated");
     permissions.forEach(([agent, allowedTarget, maxSpend, spent, expiresAt, maxUses, uses, revoked, asset], i) => {
@@ -318,6 +363,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
         issuedAt: log ? at(log.blockNumber) : 0,
         cancelled: revoked,
         balance: 0n,
+        approvalThreshold: thresholds.get(BigInt(i)),
       };
       cards.push({ ...base, status: status(base, now) });
       targetOf.set(id, allowedTarget);
@@ -385,7 +431,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
     merchants,
     targetOf,
   );
-  activity.push(...blocked);
+  activity.push(...(await withApprovals(blocked, activity, account, toBlock)));
 
   activity.sort((a, b) => (a.block === b.block ? b.position - a.position : a.block > b.block ? -1 : 1));
   cards.sort((a, b) => {
@@ -399,4 +445,65 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
     cards,
     activity,
   };
+}
+
+/**
+ * Works out where each held purchase's approval stands from the plugin's events, and adds an "approved" row per
+ * approval. Done on every snapshot: the blocked scan is cached per block, but approvals arrive later.
+ */
+async function withApprovals(
+  blocked: Activity[],
+  activity: Activity[],
+  account: Address | null,
+  toBlock: bigint,
+): Promise<Activity[]> {
+  const hook = approvalHook();
+  if (!hook || !account || !blocked.some(b => b.held)) return blocked;
+
+  // The chain's "now" (the pending block's time), not this computer's clock: held rows carry block times, and a
+  // local chain's time can be moved ahead (evm_increaseTime) or sit idle without new blocks.
+  const now = Number((await publicClient.getBlock({ blockTag: "pending" })).timestamp);
+
+  const events = await publicClient.getContractEvents({
+    address: hook,
+    abi: approvalHookAbi,
+    args: { wallet: account },
+    fromBlock: FROM_BLOCK,
+    toBlock,
+  });
+  await timestamps(events.map(e => e.blockNumber));
+
+  const after = (e: { blockNumber: bigint; transactionIndex: number }, item: Activity) =>
+    e.blockNumber > item.block || (e.blockNumber === item.block && order(e.transactionIndex) > item.position);
+
+  const shown = new Set<string>();
+  return blocked.map(item => {
+    if (!item.held) return item;
+    const approval = events.find(e => e.eventName === "Approved" && e.args.requestKey === item.held!.requestKey && after(e, item));
+    if (!approval || approval.eventName !== "Approved") {
+      return now - item.at > APPROVAL_WAIT_SECONDS ? { ...item, held: { ...item.held, state: "timed-out" as const } } : item;
+    }
+
+    const id = `${approval.transactionHash}-${approval.logIndex}`;
+    if (!shown.has(id)) {
+      shown.add(id);
+      activity.push({
+        id,
+        kind: "approved",
+        cardId: item.cardId,
+        at: at(approval.blockNumber),
+        block: approval.blockNumber,
+        position: order(approval.transactionIndex, approval.logIndex),
+        hash: approval.transactionHash,
+        value: item.value,
+        summary: item.summary,
+      });
+    }
+    // Only a use after this approval counts; an earlier or later approval cycle of the same request doesn't.
+    const afterApproval = (e: (typeof events)[number]) =>
+      e.blockNumber > approval.blockNumber || (e.blockNumber === approval.blockNumber && e.logIndex > approval.logIndex);
+    const used = events.some(e => e.eventName === "ApprovalUsed" && e.args.requestKey === item.held!.requestKey && afterApproval(e));
+    const state = used ? "used" : Number(approval.args.validUntil) < now ? "expired" : "approved";
+    return { ...item, held: { ...item.held, state } };
+  });
 }
