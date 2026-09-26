@@ -12,7 +12,10 @@ const themes = {
   "multi-use": { paper: "#e9f1eb", ink: "#2f5d50", label: "Multi-use card" },
 } as const;
 
-export type CardFace = Pick<Card, "id" | "kind" | "merchant" | "maxSpend" | "spent" | "maxUses" | "uses" | "expiresAt" | "status">;
+export type CardFace = Pick<
+  Card,
+  "id" | "kind" | "merchant" | "maxSpend" | "spent" | "maxUses" | "uses" | "expiresAt" | "status" | "approvalThreshold"
+>;
 
 export function SecurityCard({
   card,
@@ -43,7 +46,14 @@ export function SecurityCard({
         <Guilloche seed={card.id} ink={theme.ink} />
         <div className={cn("relative flex h-full flex-col justify-between", size === "lg" ? "p-7" : "p-5")}>
           <div className="flex items-baseline justify-between text-[0.72rem] font-medium">
-            <span>{theme.label}</span>
+            <span className="flex items-baseline gap-2">
+              {theme.label}
+              {card.approvalThreshold !== undefined && (
+                <span className="rounded-full border border-current/30 px-1.5 py-px text-[0.65rem] opacity-90">
+                  Approval over {eth(card.approvalThreshold)} ETH
+                </span>
+              )}
+            </span>
             <span className="opacity-75">{number === "specimen" ? "Specimen" : `Nº ${number}`}</span>
           </div>
 

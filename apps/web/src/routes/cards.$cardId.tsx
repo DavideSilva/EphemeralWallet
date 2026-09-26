@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityList } from "@/components/activity-list";
 import { WithSnapshot } from "@/components/chain-state";
@@ -22,11 +22,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cancelCard, reclaimCard } from "@/lib/actions";
-import type { Card, Snapshot } from "@/lib/data";
+import { approvePurchase, cancelCard, reclaimCard } from "@/lib/actions";
+import { describePurchase, type Activity, type Card, type Held, type Snapshot } from "@/lib/data";
 import { agentCommand, eth, shortAddress, time, validity } from "@/lib/format";
 import { savedGoal, saveGoal } from "@/lib/goals";
-import { useMerchant } from "@/lib/hooks";
+import { useMerchant, useMerchants } from "@/lib/hooks";
 import { savedScreening, type ScreeningStatus } from "@/lib/screening";
 
 export const Route = createFileRoute("/cards/$cardId")({ component: CardPage });
@@ -84,6 +84,7 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
           </div>
 
           <IssueCheck cardId={card.id} />
+          {card.status === "active" && <ApprovalRequests activity={activity} />}
           {card.status === "active" ? <TaskComposer card={card} /> : <Inactive card={card} />}
           <Catalog merchant={card.merchant} />
           <Controls card={card} />
@@ -126,15 +127,74 @@ function Limits({ card }: { card: Card }) {
   const total = Math.max(1, card.expiresAt - card.issuedAt);
   const elapsed = Math.min(total, Math.max(0, Date.now() / 1000 - card.issuedAt));
   return (
-    <div className="grid gap-5 rounded-xl border border-border bg-card p-5 sm:grid-cols-3">
-      <Meter label={`${eth(card.spent)} of ${eth(card.maxSpend)} ETH spent`} value={Number(card.spent)} max={Number(card.maxSpend)} />
-      <Meter label={`${card.uses} of ${card.maxUses} ${card.maxUses === 1 ? "use" : "uses"}`} value={card.uses} max={card.maxUses} />
-      <Meter
-        label={card.status === "active" || card.status === "expired" ? validity(card.expiresAt) : "No longer usable"}
-        value={card.status === "active" ? elapsed : total}
-        max={total}
-        tone="intaglio"
-      />
+    <div className="space-y-3">
+      <div className="grid gap-5 rounded-xl border border-border bg-card p-5 sm:grid-cols-3">
+        <Meter label={`${eth(card.spent)} of ${eth(card.maxSpend)} ETH spent`} value={Number(card.spent)} max={Number(card.maxSpend)} />
+        <Meter label={`${card.uses} of ${card.maxUses} ${card.maxUses === 1 ? "use" : "uses"}`} value={card.uses} max={card.maxUses} />
+        <Meter
+          label={card.status === "active" || card.status === "expired" ? validity(card.expiresAt) : "No longer usable"}
+          value={card.status === "active" ? elapsed : total}
+          max={total}
+          tone="intaglio"
+        />
+      </div>
+      {card.approvalThreshold !== undefined && (
+        <p className="text-sm text-muted-foreground">
+          Any purchase over {eth(card.approvalThreshold)} ETH waits for your approval of that exact purchase.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Held purchases still waiting for the owner. The newest row per request decides its state. */
+function pendingApprovals(activity: Activity[]): Held[] {
+  const latest = new Map<string, Held>();
+  for (const item of activity) {
+    if (item.held && !latest.has(item.held.requestKey)) latest.set(item.held.requestKey, item.held);
+  }
+  return [...latest.values()].filter(held => held.state === "waiting");
+}
+
+function ApprovalRequests({ activity }: { activity: Activity[] }) {
+  const pending = pendingApprovals(activity);
+  if (pending.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      {pending.map(held => (
+        <ApprovalRequest key={held.requestKey} held={held} />
+      ))}
+    </div>
+  );
+}
+
+function ApprovalRequest({ held }: { held: Held }) {
+  const queryClient = useQueryClient();
+  const { data: merchants } = useMerchants();
+  const merchant = merchants?.find(m => m.address.toLowerCase() === held.target.toLowerCase());
+  // Decoded from the calldata the agent sent, never from its memo, so the owner approves what will actually run.
+  const purchase = merchants ? describePurchase(merchants, held.target, held.data) : undefined;
+  const approve = useMutation({
+    mutationFn: () => approvePurchase(held),
+    onSuccess: () => {
+      toast.success("Approved. The agent will retry now.");
+      return queryClient.invalidateQueries({ queryKey: ["snapshot"] });
+    },
+    onError: error => toast.error(error.message.split("\n")[0]),
+  });
+  return (
+    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4" role="alert">
+      <p className="flex items-center gap-2 font-semibold text-amber-900">
+        <Hourglass className="size-4" aria-hidden="true" /> Your agent is waiting for approval
+      </p>
+      <p className="mt-1.5 text-sm">
+        Buy <span className="font-medium">{purchase ?? "an unknown item"}</span> for{" "}
+        <span className="font-medium">{eth(held.value)} ETH</span> at {merchant?.name ?? held.target}?
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">This approves only this exact purchase, once, for the next hour.</p>
+      <Button className="mt-3" onClick={() => approve.mutate()} disabled={approve.isPending}>
+        {approve.isPending ? "Approving…" : "Approve purchase"}
+      </Button>
     </div>
   );
 }
