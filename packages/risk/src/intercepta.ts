@@ -25,10 +25,17 @@ function asObject(body: unknown): Record<string, unknown> {
 
 function parseAddressScan(body: unknown): AddressScan {
   const o = asObject(body);
-  const traits = Array.isArray(o.traits) ? (o.traits as Trait[]) : [];
+  const toxicScoreOk = typeof o.toxicScore === "number";
+  const traitsOk = Array.isArray(o.traits);
+  if (!toxicScoreOk && !traitsOk) throw new Error("missing toxicScore and traits");
+  const traits = traitsOk ? (o.traits as Trait[]) : [];
   return {
-    toxicScore: typeof o.toxicScore === "number" ? o.toxicScore : 0,
-    traits: traits.map(t => ({ name: String(t.name), risk: Number(t.risk ?? 0), txsCount: Number(t.txsCount ?? 0), description: String(t.description ?? t.name) }))
+    toxicScore: toxicScoreOk ? (o.toxicScore as number) : 0,
+    traits: traits.map(t => {
+      const risk = Number(t.risk ?? 0);
+      if (!Number.isFinite(risk)) throw new Error("trait risk is not a finite number");
+      return { name: String(t.name), risk, txsCount: Number(t.txsCount ?? 0), description: String(t.description ?? t.name) };
+    })
   };
 }
 

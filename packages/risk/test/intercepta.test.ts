@@ -23,6 +23,19 @@ describe("intercepta client", () => {
     expect(await client.deepScanAddress(ADDR)).toEqual({ toxicScore: 0, traits: [] });
   });
 
+  it("fails closed on an address scan with neither toxicScore nor traits", async () => {
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, {}) });
+    await expect(client.quickScanAddress(ADDR)).rejects.toThrow(/unexpected body/);
+  });
+
+  it("fails closed when a trait's risk is not a finite number", async () => {
+    const client = createInterceptaClient({
+      apiKey: "k",
+      fetchImpl: fakeFetch(200, { traits: [{ name: "x", risk: "high", txsCount: 1, description: "d" }] })
+    });
+    await expect(client.quickScanAddress(ADDR)).rejects.toThrow(/unexpected body/);
+  });
+
   it("fails closed on non-2xx", async () => {
     const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(500, { error: "boom" }) });
     await expect(client.quickScanAddress(ADDR)).rejects.toBeInstanceOf(ScreeningUnavailable);
