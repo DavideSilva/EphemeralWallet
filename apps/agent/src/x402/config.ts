@@ -8,6 +8,7 @@ export type AgentConfig = {
   interceptaKey: string;
   port: number;
   serviceUrl: string;
+  uiOrigin: string;
   wallets: { default: WalletRef; risky?: WalletRef };
 };
 
@@ -26,6 +27,7 @@ export function loadAgentConfig(): AgentConfig {
     interceptaKey: required("INTERCEPTA_API_KEY"),
     port: Number(process.env.AGENT_PORT ?? 4100),
     serviceUrl: process.env.SERVICE_URL ?? "http://localhost:4021",
+    uiOrigin: process.env.AGENT_UI_ORIGIN ?? "http://localhost:5173",
     wallets: {
       default: { wallet: required("WALLET_ADDRESS") as Address, permissionId: BigInt(process.env.PERMISSION_ID ?? 0) },
       risky: process.env.RISKY_WALLET_ADDRESS

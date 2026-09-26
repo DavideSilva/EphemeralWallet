@@ -40,7 +40,7 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
       approveTx: seen.approveTx
     };
 
-  const first = await fetch(url);
+  const first = await fetch(url, { redirect: "manual" });
   if (first.status !== 402) return ctx.store.addDecision({ ...base, status: "failed", error: `expected 402, got ${first.status}` });
   const header = first.headers.get("PAYMENT-REQUIRED");
   if (!header) return ctx.store.addDecision({ ...base, status: "failed", error: "missing PAYMENT-REQUIRED header" });
@@ -70,13 +70,19 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
     return decision;
   }
 
-  const paid = await fetch(url, { headers: { "PAYMENT-SIGNATURE": encodePaymentSignatureHeader(payload) } });
+  const paid = await fetch(url, { headers: { "PAYMENT-SIGNATURE": encodePaymentSignatureHeader(payload) }, redirect: "manual" });
   if (paid.status === 200) {
     const settlement = paid.headers.get("PAYMENT-RESPONSE");
     const settleTx = settlement ? decodePaymentResponseHeader(settlement).transaction : undefined;
     return ctx.store.addDecision({ ...base, ...detail(), status: "settled", settleTx });
   }
   const rejection = paid.headers.get("PAYMENT-REQUIRED");
-  const reason = rejection ? decodePaymentRequiredHeader(rejection).error : `HTTP ${paid.status}`;
-  return ctx.store.addDecision({ ...base, ...detail(), status: "rejected_by_payee", error: reason ?? `HTTP ${paid.status}` });
+  const reason = rejection ? decodePaymentRequiredHeader(rejection).error : undefined;
+  const payerRefused = reason !== undefined && (reason.startsWith("payer_refused") || reason.startsWith("payer_screening_unavailable"));
+  return ctx.store.addDecision({
+    ...base,
+    ...detail(),
+    status: payerRefused ? "rejected_by_payee" : "failed",
+    error: reason ?? `HTTP ${paid.status}`
+  });
 }

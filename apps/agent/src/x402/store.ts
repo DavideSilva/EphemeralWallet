@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Hex } from "viem";
 import type { Address, Profile, Reason, VerdictKind } from "@eaw/risk";
 
-export type DecisionStatus = "settled" | "refused" | "held" | "rejected_by_payee" | "failed";
+export type DecisionStatus = "settled" | "refused" | "held" | "rejected_by_payee" | "failed" | "superseded";
 export type Decision = {
   id: string;
   createdAt: string;
@@ -18,6 +18,7 @@ export type Decision = {
   settleTx?: string;
   error?: string;
   holdId?: string;
+  resolvedBy?: string;
 };
 export type Hold = {
   id: string;
@@ -40,6 +41,12 @@ export function createStore() {
       return decision;
     },
     listDecisions: () => [...decisions],
+    updateDecision(id: string, patch: Partial<Decision>): Decision {
+      const decision = decisions.find(d => d.id === id);
+      if (!decision) throw new Error("decision not found");
+      Object.assign(decision, patch);
+      return decision;
+    },
     addHold(h: Omit<Hold, "id" | "status">): Hold {
       const hold: Hold = { ...h, id: randomUUID(), status: "pending" };
       holds.set(hold.id, hold);

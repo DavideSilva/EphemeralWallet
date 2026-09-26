@@ -20,4 +20,14 @@ describe("store", () => {
     expect(store.getHold(hold.id)?.status).toBe("approved");
     expect(() => store.resolveHold(hold.id, "rejected")).toThrow(/already/);
   });
+
+  it("updates decisions in place and throws on unknown id", () => {
+    const store = createStore();
+    const decision = store.addDecision({ url: "a", wallet: PAYEE, permissionId: "0", status: "held" });
+    const updated = store.updateDecision(decision.id, { status: "superseded", resolvedBy: "new-id" });
+    expect(updated.status).toBe("superseded");
+    expect(updated.resolvedBy).toBe("new-id");
+    expect(store.listDecisions()[0]).toMatchObject({ status: "superseded", resolvedBy: "new-id" });
+    expect(() => store.updateDecision("missing", { status: "failed" })).toThrow(/not found/);
+  });
 });
