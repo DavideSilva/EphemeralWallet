@@ -46,7 +46,7 @@ const tierTone: Record<Profile["tier"], Tone> = { TRUSTED: "go", CAUTION: "wait"
 
 const actions = [
   { title: "Buy from a clean seller", detail: "0.01 USDC · /dataset", body: { url: `${SERVICE}/dataset` }, primary: true },
-  { title: "Buy from a sanctioned seller", detail: "0.01 USDC · /premium-dataset", body: { url: `${SERVICE}/premium-dataset` } },
+  { title: "Buy from a flagged seller", detail: "0.01 USDC · /premium-dataset", body: { url: `${SERVICE}/premium-dataset` } },
   { title: "Make a large purchase", detail: "0.30 USDC · /bulk-dataset", body: { url: `${SERVICE}/bulk-dataset` } },
   { title: "Pay from a sanctioned wallet", detail: "0.01 USDC · /dataset, risky wallet", body: { url: `${SERVICE}/dataset`, wallet: "risky" } },
 ];

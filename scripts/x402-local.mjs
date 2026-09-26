@@ -19,8 +19,11 @@ const freshAccount = () => {
   return { key, address: privateKeyToAccount(key).address };
 };
 const accounts = { owner: freshAccount(), agent: freshAccount(), facilitator: freshAccount(), payee: freshAccount() };
-// Publicly OFAC-sanctioned Ronin exploiter; used when the Discord test addresses aren't in .env.
-const fallbackRisky = "0x098B716B8Aaf21512996dC57EB0615e2383E2f96";
+// Defaults when .env doesn't set them. Both tier BLOCKED with Intercepta, for different reasons:
+// the payee is a test address from Intercepta (known scammer, funds from exploits and drainers),
+// the owner is the publicly OFAC-listed Ronin bridge exploiter (sanctions).
+const fallbackRiskyPayTo = "0x39308ae43e5dda98db5fb17d005c5c764e5a2fed";
+const fallbackRiskyOwner = "0x098B716B8Aaf21512996dC57EB0615e2383E2f96";
 
 try { process.loadEnvFile(".env"); } catch {}
 
@@ -69,11 +72,10 @@ if (await rpcIsRunning()) {
   process.exit(1);
 }
 
-const riskyPayTo = process.env.RISKY_PAYTO || fallbackRisky;
-const riskyOwner = process.env.RISKY_OWNER || fallbackRisky;
-if (!process.env.RISKY_PAYTO || !process.env.RISKY_OWNER) {
-  console.log(`RISKY_PAYTO / RISKY_OWNER not set in .env; using the public OFAC-listed ${fallbackRisky}.`);
-}
+const riskyPayTo = process.env.RISKY_PAYTO || fallbackRiskyPayTo;
+const riskyOwner = process.env.RISKY_OWNER || fallbackRiskyOwner;
+if (!process.env.RISKY_PAYTO) console.log(`RISKY_PAYTO not set in .env; using Intercepta's scam-flagged test address ${fallbackRiskyPayTo}.`);
+if (!process.env.RISKY_OWNER) console.log(`RISKY_OWNER not set in .env; using the OFAC-listed Ronin exploiter ${fallbackRiskyOwner}.`);
 
 const children = [];
 const stop = () => { for (const child of children) child.kill(); };
