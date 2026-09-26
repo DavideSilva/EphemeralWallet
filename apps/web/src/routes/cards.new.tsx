@@ -105,11 +105,6 @@ function IssueCard() {
   // one-time (ETH) card paying an x402 seller.
   const kind: CardKind = asset ? "multi-use" : pickedKind;
   const screening = useScreening(merchantReady ? chosenMerchant : undefined);
-  const { data: hasShop } = useQuery({
-    queryKey: ["has-shop", chosenMerchant.toLowerCase()],
-    queryFn: async () => Boolean(await publicClient.getCode({ address: chosenMerchant as Address })),
-    enabled: isCustom && merchantReady,
-  });
   const budgetWei = parseAmount(budget, asset);
   const fundingWei = parseAmount(funding);
   const maxUses = kind === "one-time" ? 1 : Number(uses);
@@ -279,11 +274,6 @@ function IssueCard() {
                 label="Merchant address"
                 htmlFor="custom-merchant"
                 error={submitted ? errors.merchant : undefined}
-                hint={
-                  merchantReady && hasShop === false
-                    ? "There's no shop contract at this address on the local chain, so the agent won't find anything to buy."
-                    : undefined
-                }
               >
                 <Input
                   id="custom-merchant"
@@ -505,11 +495,6 @@ function IssueCard() {
                 result={screening.data ?? (screening.error ? unreachable(chosenMerchant, screening.error) : undefined)}
                 pending={!revealed || (screening.isPending && !screening.error)}
               />
-              {revealed && isCustom && hasShop === false && screening.data?.status !== "blocked" && (
-                <p className="rounded-lg bg-paper-deep p-3 text-sm">
-                  No shop contract lives at this address on the local chain, so the agent won't find anything to buy.
-                </p>
-              )}
             </div>
           </div>
 
