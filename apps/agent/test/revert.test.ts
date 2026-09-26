@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeErrorResult } from "viem";
-import { merchantAbi, reusableWalletAbi } from "../../../packages/shared/src/abis";
+import { approvalHookAbi, merchantAbi, reusableWalletAbi } from "../../../packages/shared/src/abis";
 import { decodeRevert, describeRevert, revertName } from "../../../packages/shared/src/revert";
 
 const HOOK = "0x3333333333333333333333333333333333333333";
@@ -22,6 +22,14 @@ describe("revert decoding", () => {
     const data = encodeErrorResult({ abi: reusableWalletAbi, errorName: "HookRejected", args: [HOOK, "0x12345678"] });
     expect(decodeRevert(data)).toEqual({ name: "HookRejected", hook: HOOK });
     expect(describeRevert(data)).toBe("Held by a card plugin");
+  });
+
+  it("unwraps the approval plugin's ApprovalRequired with its request key", () => {
+    const key = `0x${"ab".repeat(32)}` as const;
+    const reason = encodeErrorResult({ abi: approvalHookAbi, errorName: "ApprovalRequired", args: [key] });
+    const data = encodeErrorResult({ abi: reusableWalletAbi, errorName: "HookRejected", args: [HOOK, reason] });
+    expect(decodeRevert(data)).toEqual({ name: "ApprovalRequired", args: [key], hook: HOOK });
+    expect(describeRevert(data)).toBe("Waiting for your approval");
   });
 
   it("falls back for empty or unknown data", () => {

@@ -103,6 +103,19 @@ A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts impleme
 - Trust model: plugins are code the owner chose. They are called with the wallet as `msg.sender`, key their state by
   `(msg.sender, permissionId)`, and must not call back into the wallet.
 
+### Approval plugin (`ApprovalHook`)
+
+- Config: `abi.encode(uint256 threshold)` in wei. A purchase with `value <= threshold` passes. A larger one is held
+  with `ApprovalRequired(requestKey)` unless the owner approved that exact purchase.
+- `requestKey = keccak256(abi.encode(wallet, permissionId, target, value, keccak256(data)))`, exposed as `requestKey(...)`.
+- `approve(wallet, permissionId, target, value, data, validUntil)`: the wallet's current owner only; the plugin must be
+  attached to that permission; `validUntil` at most `MAX_APPROVAL_TTL` (1 day) ahead. Emits `Approved`.
+- An approval is used once: `beforeExecute` deletes it and emits `ApprovalUsed`. If the merchant call then fails, the
+  whole purchase rolls back and the approval stays.
+- Per purchase: the threshold applies to each purchase on its own. Splitting a large order into small ones is not
+  caught; only the card's budget and uses bound it.
+- A fake wallet can only approve requests keyed by its own address.
+
 ## Factories
 
 - `MissionFactory.createMission` deploys and funds one Mode A wallet.

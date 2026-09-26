@@ -435,3 +435,80 @@ export const merchantAbi = [
   { type: "error", name: "InvalidQuantity", inputs: [] },
   { type: "error", name: "WrongPayment", inputs: [] },
 ] as const;
+
+export const approvalHookAbi = [
+  {
+    type: "function",
+    name: "requestKey",
+    stateMutability: "pure",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "target", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+    ],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "thresholdOf",
+    stateMutability: "view",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "approvedUntil",
+    stateMutability: "view",
+    inputs: [{ name: "requestKey", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "MAX_APPROVAL_TTL",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "target", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+      { name: "validUntil", type: "uint64" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "event",
+    name: "Approved",
+    inputs: [
+      { indexed: true, name: "wallet", type: "address" },
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "requestKey", type: "bytes32" },
+      { indexed: false, name: "validUntil", type: "uint64" },
+    ],
+  },
+  {
+    type: "event",
+    name: "ApprovalUsed",
+    inputs: [
+      { indexed: true, name: "wallet", type: "address" },
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "requestKey", type: "bytes32" },
+    ],
+  },
+  { type: "error", name: "ApprovalRequired", inputs: [{ name: "requestKey", type: "bytes32" }] },
+  { type: "error", name: "NotWalletOwner", inputs: [] },
+  { type: "error", name: "NotAttached", inputs: [] },
+  { type: "error", name: "InvalidExpiry", inputs: [] },
+] as const;

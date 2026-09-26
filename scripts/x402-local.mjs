@@ -113,8 +113,9 @@ try {
   const deployed = name => (deploy.stdout + deploy.stderr).match(new RegExp(`${name}\\s+(0x[a-fA-F0-9]{40})`))?.[1];
   const factory = deployed("ReusableWalletFactory");
   const missionFactory = deployed("MissionFactory");
+  const approvalHook = deployed("ApprovalHook");
   const merchants = ["Cafe", "TicketOffice", "TipJar"].map(deployed);
-  if (deploy.status !== 0 || !factory || !missionFactory || merchants.some(m => !m)) {
+  if (deploy.status !== 0 || !factory || !missionFactory || !approvalHook || merchants.some(m => !m)) {
     console.error(deploy.stdout, deploy.stderr);
     throw new Error("Could not deploy the demo contracts");
   }
@@ -174,6 +175,7 @@ try {
     VITE_FROM_BLOCK: fromBlock.toString(),
     VITE_FACTORY: missionFactory,
     VITE_REUSABLE_FACTORY: factory,
+    VITE_APPROVAL_HOOK: approvalHook,
     VITE_MERCHANTS: merchants.join(",")
   };
   start("web", "npm", ["run", "web"], webEnv).on("exit", () => { stop(); process.exit(0); });
