@@ -8,6 +8,14 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 //   npm run demo                   start chain, service, agent daemon and UI
 //   npm run demo -- --scenarios    also run the scripted four-scenario x402 demo
 
+// Load .env before reading any config from it. A missing file is fine; anything else
+// (such as Node < 20.12 without process.loadEnvFile) must not silently drop the key.
+try {
+  process.loadEnvFile(".env");
+} catch (error) {
+  if (error?.code !== "ENOENT") throw error;
+}
+
 const rpc = "http://127.0.0.1:8545";
 const forkUrl = process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
 const usdc = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -25,8 +33,6 @@ const accounts = { owner: freshAccount(), agent: freshAccount(), facilitator: fr
 // the owner is the publicly OFAC-listed Ronin bridge exploiter (sanctions).
 const fallbackRiskyPayTo = "0x39308ae43e5dda98db5fb17d005c5c764e5a2fed";
 const fallbackRiskyOwner = "0x098B716B8Aaf21512996dC57EB0615e2383E2f96";
-
-try { process.loadEnvFile(".env"); } catch {}
 
 function commandExists(command) {
   return spawnSync(command, ["--version"], { stdio: "ignore" }).status === 0;
