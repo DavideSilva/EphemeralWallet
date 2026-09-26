@@ -25,8 +25,9 @@ export function PaymentsPanel() {
   const [holds, setHolds] = useState<Hold[]>([]);
   const [payerLog, setPayerLog] = useState<PayerLogEntry[]>([]);
   const [lookup, setLookup] = useState("");
-  const [profile, setProfile] = useState<Profile | string>();
+  const [profile, setProfile] = useState<Profile>();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
 
   async function refresh() {
     const [d, h, p] = await Promise.all([
@@ -40,15 +41,25 @@ export function PaymentsPanel() {
 
   async function post(path: string, body?: unknown) {
     setBusy(true);
-    try { await fetch(`${AGENT}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) }); await refresh(); }
+    try {
+      const r = await fetch(`${AGENT}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
+      if (!r.ok) { const data = await r.json().catch(() => undefined); setError(data?.error ?? `HTTP ${r.status}`); return; }
+      setError(undefined);
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
   async function screen() {
-    const r = await fetch(`${SERVICE}/risk/${lookup}`);
-    setProfile(r.ok ? await r.json() : (await r.json()).error);
+    try {
+      const r = await fetch(`${SERVICE}/risk/${lookup}`);
+      if (!r.ok) { const data = await r.json().catch(() => undefined); setError(data?.error ?? `HTTP ${r.status}`); return; }
+      setError(undefined);
+      setProfile(await r.json());
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }
 
-  const counterparties = [...new Map(decisions.filter(d => d.payee).map(d => [d.payee!.address, d.payee!])).values()];
+  const counterparties = [...new Map(decisions.filter(d => d.payee).map(d => [d.payee!.address, d.payee!])).values()]
+    .filter(p => !profile || p.address.toLowerCase() !== profile.address.toLowerCase());
 
   return <section className="x402">
     <div className="actions">
@@ -57,6 +68,7 @@ export function PaymentsPanel() {
       <button disabled={busy} onClick={() => post("/pay", { url: `${SERVICE}/bulk-dataset` })}>Pay /bulk-dataset (0.30)</button>
       <button disabled={busy} onClick={() => post("/pay", { url: `${SERVICE}/dataset`, wallet: "risky" })}>Pay /dataset as risky wallet</button>
     </div>
+    {error && <p className="error">{error}</p>}
 
     <h2>Held payments</h2>
     {holds.filter(h => h.status === "pending").length === 0 && <p className="muted">Nothing waiting for you.</p>}
@@ -72,7 +84,7 @@ export function PaymentsPanel() {
       <p><span className={`badge ${d.verdict?.kind ?? "FAILED"}`}>{d.verdict?.kind ?? "ERROR"}</span> {usdc(d.amount)} → <code>{short(d.payTo)}</code> <span className="muted">{new URL(d.url).pathname} · {d.status}</span></p>
       {d.verdict && <Reasons reasons={d.verdict.reasons}/>}
       {d.error && <p className="error">{d.error}</p>}
-      {d.settleTx && <a href={`${EXPLORER}${d.settleTx}`} target="_blank">settlement tx</a>}
+      {d.settleTx && <a href={`${EXPLORER}${d.settleTx}`} target="_blank" rel="noopener noreferrer">settlement tx</a>}
     </div>)}
 
     <h2>Service: payer screening</h2>
@@ -84,10 +96,10 @@ export function PaymentsPanel() {
     <h2>Counterparties</h2>
     <label>Screen any address<input value={lookup} onChange={e => setLookup(e.target.value)} placeholder="0x…"/></label>
     <button onClick={screen}>Get risk profile</button>
-    {[...(typeof profile === "object" ? [profile] : []), ...counterparties].map(p => <div key={p.address} className="card">
+    {[...(profile ? [profile] : []), ...counterparties].map(p => <div key={p.address} className="card">
       <p><span className={`badge ${p.tier}`}>{p.tier}</span> <code>{p.address}</code> {p.labels.join(" · ")}</p>
+      <p className="muted">screened {new Date(p.screenedAt).toLocaleString()}</p>
       {p.reasons.length ? <Reasons reasons={p.reasons}/> : <p className="muted">No risk traits.</p>}
     </div>)}
-    {typeof profile === "string" && <p className="error">{profile}</p>}
   </section>;
 }
