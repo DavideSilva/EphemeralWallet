@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { HoldActions } from "./HoldApproval";
 
 const AGENT = import.meta.env.VITE_AGENT_URL ?? "http://localhost:4100";
 const SERVICE = import.meta.env.VITE_SERVICE_URL ?? "http://localhost:4021";
@@ -16,7 +17,7 @@ type Decision = {
   id: string; createdAt: string; url: string; wallet: string; payTo?: string; amount?: string; status: string;
   verdict?: { kind: string; reasons: Reason[]; cap?: string }; payee?: Profile; approveTx?: string; validBefore?: string; settleTx?: string; error?: string;
 };
-type Hold = { id: string; url: string; payTo: string; amount: string; reasons: Reason[]; status: string };
+type Hold = { id: string; url: string; payTo: `0x${string}`; amount: string; reasons: Reason[]; status: string; wallet?: `0x${string}`; permissionId?: string };
 type PayerLogEntry = { at: string; payer: string; outcome: string; reasons: Reason[] };
 type WalletStatus = { key: string; wallet: string; maxSpend: string; spent: string; balance: string; uses: number; maxUses: number; expiresAt: number; revoked: boolean };
 
@@ -228,7 +229,7 @@ export function PaymentsPanel() {
         </p>
       )}
 
-      <Section title="Waiting for you" blurb="Payments the agent paused for your approval, for example because the amount is above your 0.25 USDC threshold.">
+      <Section title="Waiting for you" blurb="Payments the agent paused for your approval: a new payee, an amount over 0.25 USDC, or a risk flag from Intercepta. On a Touch ID wallet the wallet itself refuses the first two until you approve.">
         {pending.length === 0 && <p className="text-muted-foreground">Nothing waiting for you.</p>}
         {pending.map(h => (
           <Entry key={h.id} className="border-intaglio/40">
@@ -236,10 +237,13 @@ export function PaymentsPanel() {
               <Stamp label="Waiting for you" tone="wait" /> {usdc(h.amount)} → <code className="font-mono text-sm">{short(h.payTo)}</code>
             </p>
             <Reasons reasons={h.reasons} />
-            <div className="mt-3 flex gap-2">
-              <Button size="sm" disabled={busy} onClick={() => post(`/holds/${h.id}/approve`)}>Approve</Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => post(`/holds/${h.id}/reject`)}>Reject</Button>
-            </div>
+            <HoldActions
+              hold={h}
+              busy={busy}
+              onApprove={() => post(`/holds/${h.id}/approve`)}
+              onReject={() => post(`/holds/${h.id}/reject`)}
+              onError={setError}
+            />
           </Entry>
         ))}
       </Section>
