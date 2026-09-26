@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { Card } from "@/lib/data";
-import { eth, serial, validity } from "@/lib/format";
+import { zeroAddress } from "viem";
+import { eth, serial, shortAddress, validity } from "@/lib/format";
 import { useMerchant } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { Guilloche } from "./guilloche";
@@ -47,7 +48,7 @@ export function SecurityCard({
           </div>
 
           <div className={cn("font-display leading-none", size === "lg" ? "text-5xl" : "text-[2.1rem]")}>
-            {merchant?.name ?? "Merchant"}
+            {merchant?.name ?? (card.merchant === zeroAddress ? "Another merchant" : shortAddress(card.merchant))}
           </div>
 
           <div className="flex items-end justify-between gap-3">

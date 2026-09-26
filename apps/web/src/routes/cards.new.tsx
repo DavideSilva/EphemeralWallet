@@ -1,21 +1,33 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { isAddress, parseEther, type Address } from "viem";
+import { isAddress, parseEther, zeroAddress, type Address } from "viem";
 import { useConnection } from "wagmi";
+import { MerchantCheck } from "@/components/merchant-check";
 import { SecurityCard } from "@/components/security-card";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { issueCard } from "@/lib/actions";
+import { publicClient } from "@/lib/chain";
 import { DEFAULT_AGENT } from "@/lib/config";
 import type { CardKind } from "@/lib/data";
-import { eth } from "@/lib/format";
+import { eth, shortAddress } from "@/lib/format";
 import { saveGoal } from "@/lib/goals";
 import { useMerchants, useSnapshot } from "@/lib/hooks";
+import { saveScreening, useScreening, type ScreeningResponse, type ScreeningStatus } from "@/lib/screening";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/cards/new")({ component: IssueCard });
@@ -56,7 +68,18 @@ function IssueCard() {
   const { data: snapshot } = useSnapshot();
 
   const [kind, setKind] = useState<CardKind>("one-time");
-  const [merchant, setMerchant] = useState<Address | "">("");
+  const [merchant, setMerchant] = useState<Address | "custom" | "">("");
+  const [customMerchant, setCustomMerchant] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [acceptRisk, setAcceptRisk] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+
+  // The check usually finishes before the dialog opens; a short scan keeps it visible as a step.
+  useEffect(() => {
+    if (!confirming) return setRevealed(false);
+    const timer = setTimeout(() => setRevealed(true), 1100);
+    return () => clearTimeout(timer);
+  }, [confirming]);
   const [budget, setBudget] = useState("0.005");
   const [uses, setUses] = useState("3");
   const [duration, setDuration] = useState(durations[1].seconds);
@@ -65,7 +88,16 @@ function IssueCard() {
   const [funding, setFunding] = useState("0.02");
   const [submitted, setSubmitted] = useState(false);
 
-  const chosenMerchant = merchant || merchants?.[0]?.address || "";
+  const isCustom = merchant === "custom";
+  const chosenMerchant = isCustom ? customMerchant.trim() : merchant || merchants?.[0]?.address || "";
+  const merchantReady = isAddress(chosenMerchant);
+  const merchantName = merchants?.find(m => m.address.toLowerCase() === chosenMerchant.toLowerCase())?.name;
+  const screening = useScreening(merchantReady ? chosenMerchant : undefined);
+  const { data: hasShop } = useQuery({
+    queryKey: ["has-shop", chosenMerchant.toLowerCase()],
+    queryFn: async () => Boolean(await publicClient.getCode({ address: chosenMerchant as Address })),
+    enabled: isCustom && merchantReady,
+  });
   const budgetWei = parseAmount(budget);
   const fundingWei = parseAmount(funding);
   const maxUses = kind === "one-time" ? 1 : Number(uses);
@@ -79,9 +111,10 @@ function IssueCard() {
         ? "Enter a whole number from 1 to 1000"
         : undefined,
     agent: !isAddress(agent) ? "Enter a valid 0x address" : undefined,
+    merchant: isCustom && !merchantReady ? "Enter the merchant's 0x address" : undefined,
     funding: needsAccount && fundingWei === null ? "Enter an amount above 0" : undefined,
   };
-  const valid = !Object.values(errors).some(Boolean) && Boolean(chosenMerchant) && Boolean(owner);
+  const valid = !Object.values(errors).some(Boolean) && merchantReady && Boolean(owner);
 
   const issue = useMutation({
     mutationFn: () =>
@@ -97,6 +130,8 @@ function IssueCard() {
       }),
     onSuccess: async cardId => {
       if (goal.trim()) saveGoal(cardId, goal.trim());
+      if (screening.data) saveScreening(cardId, screening.data);
+      setConfirming(false);
       await queryClient.invalidateQueries({ queryKey: ["snapshot"] });
       toast.success("Card issued");
       navigate({ to: "/cards/$cardId", params: { cardId } });
@@ -107,7 +142,10 @@ function IssueCard() {
   function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (valid) issue.mutate();
+    if (valid) {
+      setAcceptRisk(false);
+      setConfirming(true);
+    }
   }
 
   const shortfall =
@@ -151,8 +189,8 @@ function IssueCard() {
           <legend className="mb-3 font-semibold">Merchant</legend>
           {merchantsError && <p className="text-sm text-void">Couldn't load merchants. Is the demo running?</p>}
           <RadioGroup
-            value={chosenMerchant}
-            onValueChange={value => setMerchant(value as Address)}
+            value={isCustom ? "custom" : chosenMerchant}
+            onValueChange={value => setMerchant(value as Address | "custom")}
             className="grid gap-3 sm:grid-cols-3"
           >
             {merchants?.map(m => (
@@ -173,7 +211,45 @@ function IssueCard() {
                 </span>
               </Label>
             ))}
+            <Label
+              htmlFor="merchant-custom"
+              className={cn(
+                "flex cursor-pointer flex-col items-start gap-2 rounded-xl border border-dashed border-input bg-card p-4 font-normal transition-colors sm:col-span-3",
+                isCustom && "border-solid border-intaglio ring-1 ring-intaglio",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <RadioGroupItem id="merchant-custom" value="custom" />
+                <span className="font-display text-xl leading-none">Another merchant</span>
+              </span>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                Any address you choose. It's checked for scams, sanctions and stolen funds before the card is issued.
+              </span>
+            </Label>
           </RadioGroup>
+          {isCustom && (
+            <div className="mt-3">
+              <Field
+                label="Merchant address"
+                htmlFor="custom-merchant"
+                error={submitted ? errors.merchant : undefined}
+                hint={
+                  merchantReady && hasShop === false
+                    ? "There's no shop contract at this address on the local chain, so the agent won't find anything to buy."
+                    : undefined
+                }
+              >
+                <Input
+                  id="custom-merchant"
+                  value={customMerchant}
+                  placeholder="0x…"
+                  onChange={e => setCustomMerchant(e.target.value)}
+                  className="bg-card font-mono text-sm"
+                  autoFocus
+                />
+              </Field>
+            </div>
+          )}
         </fieldset>
 
         <fieldset className="grid gap-5 sm:grid-cols-3">
@@ -236,20 +312,20 @@ function IssueCard() {
         )}
         {shortfall && <p className="rounded-lg bg-intaglio/10 p-3 text-sm text-intaglio">{shortfall}</p>}
 
-        <Button type="submit" size="lg" disabled={issue.isPending}>
-          {issue.isPending ? "Issuing…" : "Issue card"}
+        <Button type="submit" size="lg">
+          Review and issue
         </Button>
       </form>
 
       <aside className="lg:sticky lg:top-28">
         <p className="mb-3 text-sm text-muted-foreground">Preview</p>
-        {chosenMerchant && (
+        {(merchantReady || isCustom) && (
           <SecurityCard
             size="lg"
             card={{
-              id: `preview-${kind}-${chosenMerchant}`,
+              id: `preview-${kind}-${chosenMerchant || "custom"}`,
               kind,
-              merchant: chosenMerchant as Address,
+              merchant: merchantReady ? (chosenMerchant as Address) : zeroAddress,
               maxSpend: budgetWei ?? 0n,
               spent: 0n,
               maxUses: Number.isFinite(maxUses) && maxUses > 0 ? maxUses : 1,
@@ -260,7 +336,124 @@ function IssueCard() {
           />
         )}
       </aside>
+
+      <AlertDialog open={confirming} onOpenChange={open => !issue.isPending && setConfirming(open)}>
+        <AlertDialogContent className="max-h-[92dvh] overflow-y-auto data-[size=default]:sm:max-w-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-3xl font-normal">Issue this card?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The agent can spend up to {budgetWei ? eth(budgetWei) : "0"} ETH at this merchant, and only there.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+            <div className="space-y-4">
+              <SecurityCard
+                card={{
+                  id: `preview-${kind}-${chosenMerchant}`,
+                  kind,
+                  merchant: merchantReady ? (chosenMerchant as Address) : zeroAddress,
+                  maxSpend: budgetWei ?? 0n,
+                  spent: 0n,
+                  maxUses: Number.isFinite(maxUses) && maxUses > 0 ? maxUses : 1,
+                  uses: 0,
+                  expiresAt: Date.now() / 1000 + duration,
+                  status: "active",
+                }}
+              />
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <dt className="text-muted-foreground">Type</dt>
+                <dd>{kind === "one-time" ? "One-time" : `Multi-use, ${maxUses} uses`}</dd>
+                <dt className="text-muted-foreground">Valid for</dt>
+                <dd>{durations.find(d => d.seconds === duration)?.label}</dd>
+                <dt className="text-muted-foreground">Agent</dt>
+                <dd className="font-mono text-xs leading-5">{isAddress(agent) ? shortAddress(agent) : agent}</dd>
+              </dl>
+            </div>
+
+            <div className="space-y-3">
+              <MerchantCheck
+                address={chosenMerchant}
+                name={merchantName}
+                result={screening.data ?? (screening.error ? unreachable(chosenMerchant, screening.error) : undefined)}
+                pending={!revealed || (screening.isPending && !screening.error)}
+              />
+              {revealed && isCustom && hasShop === false && screening.data?.status !== "blocked" && (
+                <p className="rounded-lg bg-paper-deep p-3 text-sm">
+                  No shop contract lives at this address on the local chain, so the agent won't find anything to buy.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <ConfirmActions
+            status={revealed ? (screening.data?.status ?? (screening.error ? "unverified" : undefined)) : undefined}
+            acceptRisk={acceptRisk}
+            onAcceptRisk={setAcceptRisk}
+            issuing={issue.isPending}
+            onIssue={() => issue.mutate()}
+            onBack={() => setConfirming(false)}
+          />
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+function unreachable(address: string, error: Error): ScreeningResponse {
+  return {
+    address,
+    status: "unverified",
+    reasons: [],
+    labels: [],
+    screenedAt: new Date().toISOString(),
+    detail: `The merchant check didn't respond (${error.message}).`,
+  };
+}
+
+function ConfirmActions({
+  status,
+  acceptRisk,
+  onAcceptRisk,
+  issuing,
+  onIssue,
+  onBack,
+}: {
+  status: ScreeningStatus | undefined;
+  acceptRisk: boolean;
+  onAcceptRisk: (value: boolean) => void;
+  issuing: boolean;
+  onIssue: () => void;
+  onBack: () => void;
+}) {
+  const risky = status === "caution" || status === "unverified";
+  return (
+    <AlertDialogFooter className="items-center gap-3 sm:justify-between">
+      <div className="text-sm">
+        {risky && (
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={acceptRisk}
+              onChange={e => onAcceptRisk(e.target.checked)}
+              className="size-4 accent-[var(--intaglio)]"
+            />
+            I understand the risk and still want to issue this card
+          </label>
+        )}
+        {status === "blocked" && <p className="text-void">Choose a different merchant to continue.</p>}
+      </div>
+      <div className="flex gap-2">
+        <AlertDialogCancel onClick={onBack} disabled={issuing}>
+          {status === "blocked" ? "Choose another merchant" : "Back"}
+        </AlertDialogCancel>
+        {status !== "blocked" && (
+          <Button onClick={onIssue} disabled={!status || issuing || (risky && !acceptRisk)}>
+            {issuing ? "Issuing…" : !status ? "Checking…" : risky ? "Issue anyway" : "Issue card"}
+          </Button>
+        )}
+      </div>
+    </AlertDialogFooter>
   );
 }
 

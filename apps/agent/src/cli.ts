@@ -96,7 +96,10 @@ const card = await readCard().catch(() => {
 const [merchantName, catalog] = await Promise.all([
   publicClient.readContract({ address: card.merchant, abi: merchantAbi, functionName: "name" }),
   publicClient.readContract({ address: card.merchant, abi: merchantAbi, functionName: "items" }),
-]);
+]).catch(() => {
+  console.error(`The card's merchant ${card.merchant} has no shop on this chain, so there's nothing to buy.`);
+  process.exit(1);
+});
 
 console.log(`Card    ${cardArg}`);
 console.log(`Task    ${goal}`);

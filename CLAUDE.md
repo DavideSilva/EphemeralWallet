@@ -7,7 +7,7 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 
 - `npm install` — npm workspaces (`apps/*`, `packages/*`). `package-lock.json` is gitignored; if the web app crashes on
   React after a pull, `rm -rf node_modules package-lock.json && npm install`.
-- `npm test` — vitest in `packages/risk`, `apps/agent`, `apps/service`.
+- `npm test` — vitest in `packages/risk`, `apps/agent`, `apps/service`, `apps/web`.
 - `npm --workspace @eaw/web run build` (vite + `tsc`), `npm --workspace @eaw/agent run typecheck`.
 - `cd packages/contracts && forge test` — the Base Sepolia fork test skips unless `BASE_SEPOLIA_RPC_URL` is set.
 - `npm run demo` — card demo on a plain local Anvil chain (port 8545) + web UI on 5173.
@@ -26,7 +26,9 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 - `apps/agent` — card agent CLI (`src/cli.ts`, `src/planner.ts`) and the x402 agent (`src/x402/`: guarded signer, pay
   loop, hold queue, daemon).
 - `apps/service` — x402 express server, in-process facilitator, payer gate (`onBeforeVerify`).
-- `apps/web` — TanStack Router + wagmi + shadcn/ui; the x402 page is `src/routes/payments.tsx`.
+- `apps/web` — TanStack Router + wagmi + shadcn/ui; the x402 page is `src/routes/payments.tsx`. `server/screening.ts` is a
+  Vite dev-server endpoint (`/api/screen/:address`, loopback only) that screens a card's merchant via `@eaw/risk` in the
+  issue-card dialog; any failure reads as unverified, never trusted.
 - `docs/superpowers/` — the original x402 design spec and implementation plan (historical).
 
 ## Rules that matter here

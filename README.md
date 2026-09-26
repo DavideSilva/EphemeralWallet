@@ -36,6 +36,16 @@ A card lets one agent spend at one merchant, up to a budget, until it expires.
 - **One-time card**: its own `EphemeralMissionWallet`, funded with the budget. One purchase, then it's used up; cancelling it refunds the balance.
 - **Multi-use card**: a permission on your `ReusablePermissionWallet` account, which is opened the first time you issue one. The agent can buy until the budget or uses run out; cancelling revokes only that card.
 
+### Merchant check
+
+When you issue a card, the app screens its merchant with Intercepta before anything happens on-chain. Pick one of the demo merchants or **Another merchant** to paste any address; **Review and issue** opens a confirmation with the check result:
+
+- **Verified**: no scam, sanctions or stolen-funds history. Issue as normal.
+- **Caution** or **Unverified** (risk signals, no record, or Intercepta unavailable): you tick "I understand the risk" to issue.
+- **Blocked**: the card can't be issued.
+
+The check runs in the Vite dev server (`/api/screen/<address>`) through `@eaw/risk`, so the key stays out of the browser. It needs `INTERCEPTA_API_KEY` in `.env`; without it every merchant shows as Unverified. It's an app-level check: the contract still only enforces the merchant, budget, uses and expiry. To see a Blocked result, use Intercepta's scam-flagged test address `0x39308ae43e5dda98db5fb17d005c5c764e5a2fed`.
+
 ### Give an agent a task
 
 Each card's page shows the command to run in a second terminal:
@@ -69,6 +79,7 @@ Payments run against Base Sepolia's real USDC contract, either on a local Anvil 
 - [`apps/agent/src/x402/screen.ts`](apps/agent/src/x402/screen.ts) + [`guarded-signer.ts`](apps/agent/src/x402/guarded-signer.ts) — payer gate, runs before `approvePayment`/signing
 - [`apps/service/src/payer-gate.ts`](apps/service/src/payer-gate.ts) — payee gate, runs before facilitator verify/settle
 - [`packages/risk/src/policy.ts`](packages/risk/src/policy.ts) — how results become PAY / CAP / HOLD / REFUSE
+- [`apps/web/server/screening.ts`](apps/web/server/screening.ts) — merchant check when issuing a card (dev-server endpoint)
 
 ### Run it locally (Anvil fork of Base Sepolia)
 

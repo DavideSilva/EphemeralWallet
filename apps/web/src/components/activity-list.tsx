@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Ban, ShieldX, ShoppingBag, Stamp, Undo2 } from "lucide-react";
 import type { Activity, Card } from "@/lib/data";
-import { dayLabel, eth, time } from "@/lib/format";
+import { dayLabel, eth, shortAddress, time } from "@/lib/format";
 import { useMerchants } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
@@ -63,7 +63,9 @@ export function ActivityList({
 
 function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; showCard: boolean }) {
   const { data: merchants } = useMerchants();
-  const merchant = merchants?.find(m => m.address.toLowerCase() === card?.merchant.toLowerCase())?.name ?? "Unknown";
+  const merchant =
+    merchants?.find(m => m.address.toLowerCase() === card?.merchant.toLowerCase())?.name ??
+    (card ? shortAddress(card.merchant) : "an unknown merchant");
   const Icon = icons[item.kind];
   const kindLabel = card?.kind === "one-time" ? "one-time" : "multi-use";
 
