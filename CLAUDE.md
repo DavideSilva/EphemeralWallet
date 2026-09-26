@@ -5,8 +5,9 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 
 ## Commands
 
-- `npm install` — npm workspaces (`apps/*`, `packages/*`). `package-lock.json` is gitignored; if the web app crashes on
-  React after a pull, `rm -rf node_modules package-lock.json && npm install`.
+- `npm install` — npm workspaces (`apps/*`, `packages/*`). `package-lock.json` is committed; after changing a workspace's
+  dependency versions, reinstall them with `npm install --workspace <ws> <pkg>@<ver>` so the lockfile keeps no stale
+  nested copies (a second `@x402/core` breaks the weather typecheck).
 - `npm test` — vitest in `packages/risk`, `apps/agent`, `apps/service`, `apps/web`.
 - `npm --workspace @eaw/web run build` (vite + `tsc`), `npm --workspace @eaw/agent run typecheck`.
 - `cd packages/contracts && forge test` — the Base Sepolia fork test skips unless `BASE_SEPOLIA_RPC_URL` is set.
