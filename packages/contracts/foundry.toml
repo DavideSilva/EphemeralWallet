@@ -3,3 +3,5 @@ src = "src"
 test = "test"
 libs = ["lib"]
 solc_version = "0.8.24"
+evm_version = "osaka"
+remappings = ["solady/=lib/solady/src/"]

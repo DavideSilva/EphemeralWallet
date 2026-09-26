@@ -153,6 +153,44 @@ export const reusableWalletAbi = [
   },
   {
     type: "function",
+    name: "createPermissionWithHooks",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "agent", type: "address" },
+      { name: "allowedTarget", type: "address" },
+      { name: "maxSpend", type: "uint256" },
+      { name: "expiresAt", type: "uint64" },
+      { name: "maxUses", type: "uint32" },
+      { name: "asset", type: "address" },
+      {
+        name: "hooks",
+        type: "tuple[]",
+        components: [
+          { name: "hook", type: "address" },
+          { name: "config", type: "bytes" },
+        ],
+      },
+    ],
+    outputs: [{ name: "permissionId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "hooksOf",
+    stateMutability: "view",
+    inputs: [{ name: "permissionId", type: "uint256" }],
+    outputs: [
+      {
+        name: "hooks",
+        type: "tuple[]",
+        components: [
+          { name: "hook", type: "address" },
+          { name: "config", type: "bytes" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
     name: "execute",
     stateMutability: "nonpayable",
     inputs: [
@@ -254,6 +292,15 @@ export const reusableWalletAbi = [
   },
   {
     type: "event",
+    name: "HookAttached",
+    inputs: [
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "hook", type: "address" },
+      { indexed: false, name: "config", type: "bytes" },
+    ],
+  },
+  {
+    type: "event",
     name: "PermissionCreated",
     inputs: [
       { indexed: true, name: "permissionId", type: "uint256" },
@@ -332,6 +379,19 @@ export const reusableWalletAbi = [
   { type: "error", name: "AuthorizationOutlivesPermission", inputs: [] },
   { type: "error", name: "NonceAlreadyApproved", inputs: [] },
   { type: "error", name: "InvalidAuthorizationWindow", inputs: [] },
+  { type: "error", name: "InvalidHook", inputs: [] },
+  { type: "error", name: "DuplicateHook", inputs: [] },
+  { type: "error", name: "TooManyHooks", inputs: [] },
+  { type: "error", name: "HooksNeedNativePermission", inputs: [] },
+  {
+    type: "error",
+    name: "HookRejected",
+    inputs: [
+      { name: "hook", type: "address" },
+      { name: "reason", type: "bytes" },
+    ],
+  },
+  { type: "error", name: "Reentered", inputs: [] },
 ] as const;
 
 export const merchantAbi = [
@@ -374,4 +434,124 @@ export const merchantAbi = [
   { type: "error", name: "UnknownItem", inputs: [] },
   { type: "error", name: "InvalidQuantity", inputs: [] },
   { type: "error", name: "WrongPayment", inputs: [] },
+] as const;
+
+export const approvalHookAbi = [
+  {
+    type: "function",
+    name: "requestKey",
+    stateMutability: "pure",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "target", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+    ],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "thresholdOf",
+    stateMutability: "view",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "approvedUntil",
+    stateMutability: "view",
+    inputs: [{ name: "requestKey", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "MAX_APPROVAL_TTL",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "target", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+      { name: "validUntil", type: "uint64" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "event",
+    name: "Approved",
+    inputs: [
+      { indexed: true, name: "wallet", type: "address" },
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "requestKey", type: "bytes32" },
+      { indexed: false, name: "validUntil", type: "uint64" },
+    ],
+  },
+  {
+    type: "event",
+    name: "ApprovalUsed",
+    inputs: [
+      { indexed: true, name: "wallet", type: "address" },
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "requestKey", type: "bytes32" },
+    ],
+  },
+  {
+    type: "function",
+    name: "challenge",
+    stateMutability: "view",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "target", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+      { name: "validUntil", type: "uint64" },
+    ],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "approveWithPasskey",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "target", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+      { name: "validUntil", type: "uint64" },
+      {
+        name: "auth",
+        type: "tuple",
+        components: [
+          { name: "authenticatorData", type: "bytes" },
+          { name: "clientDataJSON", type: "string" },
+          { name: "challengeIndex", type: "uint256" },
+          { name: "typeIndex", type: "uint256" },
+          { name: "r", type: "bytes32" },
+          { name: "s", type: "bytes32" },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+  { type: "error", name: "ApprovalRequired", inputs: [{ name: "requestKey", type: "bytes32" }] },
+  { type: "error", name: "PasskeyRequired", inputs: [] },
+  { type: "error", name: "NoPasskey", inputs: [] },
+  { type: "error", name: "InvalidPasskeySignature", inputs: [] },
+  { type: "error", name: "NotWalletOwner", inputs: [] },
+  { type: "error", name: "NotAttached", inputs: [] },
+  { type: "error", name: "InvalidExpiry", inputs: [] },
 ] as const;

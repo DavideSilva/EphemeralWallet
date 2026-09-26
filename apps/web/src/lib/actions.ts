@@ -1,9 +1,10 @@
-import { parseEventLogs, zeroAddress, type Address } from "viem";
+import { encodeAbiParameters, parseEventLogs, zeroAddress, type Address } from "viem";
 import { sendTransaction, waitForTransactionReceipt, writeContract } from "wagmi/actions";
-import { missionFactoryAbi, missionWalletAbi, reusableFactoryAbi, reusableWalletAbi } from "@shared/abis";
+import { approvalHookAbi, missionFactoryAbi, missionWalletAbi, reusableFactoryAbi, reusableWalletAbi } from "@shared/abis";
 import { publicClient, wagmiConfig } from "./chain";
-import { contracts } from "./config";
-import { cardId, type Card } from "./data";
+import { approvalHook, contracts } from "./config";
+import { cardId, type Card, type Held } from "./data";
+import { ownerPasskey, passkeyConfig, signWithPasskey, storedPasskey } from "./passkey";
 
 export type IssueInput = {
   kind: "one-time" | "multi-use";
@@ -14,6 +15,10 @@ export type IssueInput = {
   maxUses: number;
   validFor: number;
   accountFunding: bigint;
+  /** Multi-use only: purchases above this need the owner's approval. */
+  approvalThreshold?: bigint;
+  /** Approve with the owner's passkey (Touch ID) rather than the owner account. */
+  approveWithPasskey?: boolean;
 };
 
 async function confirm(hash: `0x${string}`) {
@@ -29,6 +34,8 @@ async function expiry(validFor: number) {
 }
 
 export async function issueCard(input: IssueInput): Promise<string> {
+  // First, before any other await: Safari only allows the passkey prompt close to the click.
+  const passkey = input.approvalThreshold !== undefined && input.approveWithPasskey ? await ownerPasskey() : undefined;
   const { missionFactory, reusableFactory } = contracts();
   const expiresAt = await expiry(input.validFor);
 
@@ -67,13 +74,37 @@ export async function issueCard(input: IssueInput): Promise<string> {
     account = created.args.wallet;
   }
 
+  const hook = approvalHook();
+  if (input.approvalThreshold !== undefined && !hook) throw new Error("The approval plugin isn't deployed. Restart the demo.");
   const receipt = await confirm(
-    await writeContract(wagmiConfig, {
-      address: account,
-      abi: reusableWalletAbi,
-      functionName: "createPermission",
-      args: [input.agent, input.merchant, input.budget, expiresAt, input.maxUses, zeroAddress],
-    }),
+    input.approvalThreshold !== undefined
+      ? await writeContract(wagmiConfig, {
+          address: account,
+          abi: reusableWalletAbi,
+          functionName: "createPermissionWithHooks",
+          args: [
+            input.agent,
+            input.merchant,
+            input.budget,
+            expiresAt,
+            input.maxUses,
+            zeroAddress,
+            [
+              {
+                hook: hook!,
+                config: passkey
+                  ? passkeyConfig(input.approvalThreshold, passkey)
+                  : encodeAbiParameters([{ type: "uint256" }], [input.approvalThreshold]),
+              },
+            ],
+          ],
+        })
+      : await writeContract(wagmiConfig, {
+          address: account,
+          abi: reusableWalletAbi,
+          functionName: "createPermission",
+          args: [input.agent, input.merchant, input.budget, expiresAt, input.maxUses, zeroAddress],
+        }),
   );
   const [created] = parseEventLogs({ abi: reusableWalletAbi, eventName: "PermissionCreated", logs: receipt.logs });
   if (!created) throw new Error("The card was issued but its number could not be read");
@@ -101,4 +132,55 @@ export async function reclaimCard(card: Card) {
 
 export async function topUp(account: Address, amount: bigint) {
   await confirm(await sendTransaction(wagmiConfig, { to: account, value: amount }));
+}
+
+/**
+ * The passkey challenge for a held purchase, with the expiry it signs (an hour from the later of wall clock and chain
+ * time). Read ahead of the click so Touch ID opens straight away; the caller refreshes it well within the hour.
+ */
+export async function approvalChallenge(held: Held) {
+  const block = await publicClient.getBlock();
+  const validUntil = BigInt(Math.max(Math.floor(Date.now() / 1000), Number(block.timestamp)) + 60 * 60);
+  const challenge = await publicClient.readContract({
+    address: held.hook,
+    abi: approvalHookAbi,
+    functionName: "challenge",
+    args: [held.wallet, held.permissionId, held.target, held.value, held.data, validUntil],
+  });
+  return { validUntil, challenge };
+}
+
+/**
+ * Touch ID signs this exact purchase, and the signature is recorded on-chain. The owner account only relays it:
+ * the plugin checks the passkey signature, so the account alone couldn't approve.
+ */
+export async function approveWithPasskey(
+  held: Held,
+  { validUntil, challenge }: { validUntil: bigint; challenge: `0x${string}` },
+) {
+  const passkey = storedPasskey();
+  if (!passkey) throw new Error("This browser doesn't have the passkey this card was issued with.");
+  const auth = await signWithPasskey(passkey, challenge);
+  await confirm(
+    await writeContract(wagmiConfig, {
+      address: held.hook,
+      abi: approvalHookAbi,
+      functionName: "approveWithPasskey",
+      args: [held.wallet, held.permissionId, held.target, held.value, held.data, validUntil, auth],
+    }),
+  );
+}
+
+/** The owner account approves one held purchase for the next hour; the waiting agent then retries it. */
+export async function approvePurchase(held: Held) {
+  const block = await publicClient.getBlock();
+  const validUntil = BigInt(Math.max(Math.floor(Date.now() / 1000), Number(block.timestamp)) + 60 * 60);
+  await confirm(
+    await writeContract(wagmiConfig, {
+      address: held.hook,
+      abi: approvalHookAbi,
+      functionName: "approve",
+      args: [held.wallet, held.permissionId, held.target, held.value, held.data, validUntil],
+    }),
+  );
 }

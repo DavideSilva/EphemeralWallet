@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IPermissionHook} from "./IPermissionHook.sol";
+
 interface IEIP3009Domain {
     function DOMAIN_SEPARATOR() external view returns (bytes32);
 }
@@ -28,6 +30,12 @@ contract ReusablePermissionWallet {
     error AuthorizationOutlivesPermission();
     error NonceAlreadyApproved();
     error InvalidAuthorizationWindow();
+    error InvalidHook();
+    error DuplicateHook();
+    error TooManyHooks();
+    error HooksNeedNativePermission();
+    error HookRejected(address hook, bytes reason);
+    error Reentered();
 
     struct Permission {
         address agent;
@@ -41,6 +49,14 @@ contract ReusablePermissionWallet {
         address asset;
     }
 
+    /// @notice A plugin and its settings for one permission. Fixed when the permission is created.
+    struct Hook {
+        address hook;
+        bytes config;
+    }
+
+    uint256 public constant MAX_HOOKS = 4;
+
     bytes32 public constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH = keccak256(
         "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
     );
@@ -52,6 +68,8 @@ contract ReusablePermissionWallet {
     mapping(bytes32 => bool) public approvedDigest;
     /// @notice EIP-3009 nonce => permissionId + 1 (0 = not approved).
     mapping(bytes32 => uint256) public approvedNonce;
+    mapping(uint256 => Hook[]) private _hooks;
+    bool private _executing;
 
     event PermissionCreated(
         uint256 indexed permissionId,
@@ -61,6 +79,7 @@ contract ReusablePermissionWallet {
         uint64 expiresAt,
         uint32 maxUses
     );
+    event HookAttached(uint256 indexed permissionId, address indexed hook, bytes config);
     event PermissionUsed(uint256 indexed permissionId, uint32 uses, uint256 spent);
     event PermissionRevoked(uint256 indexed permissionId);
     event Executed(
@@ -93,6 +112,46 @@ contract ReusablePermissionWallet {
         uint32 maxUses,
         address asset
     ) external onlyOwner returns (uint256 permissionId) {
+        permissionId = _createPermission(agent, allowedTarget, maxSpend, expiresAt, maxUses, asset);
+    }
+
+    /// @notice Creates a permission with plugins attached. The plugins can't be changed afterwards;
+    /// to change the rules, revoke the permission and issue a new one. Only native (ETH) permissions
+    /// take plugins, since only `execute` runs them.
+    function createPermissionWithHooks(
+        address agent,
+        address allowedTarget,
+        uint256 maxSpend,
+        uint64 expiresAt,
+        uint32 maxUses,
+        address asset,
+        Hook[] calldata hooks
+    ) external onlyOwner returns (uint256 permissionId) {
+        if (asset != address(0)) revert HooksNeedNativePermission();
+        if (hooks.length > MAX_HOOKS) revert TooManyHooks();
+        permissionId = _createPermission(agent, allowedTarget, maxSpend, expiresAt, maxUses, asset);
+        for (uint256 i = 0; i < hooks.length; i++) {
+            if (hooks[i].hook.code.length == 0) revert InvalidHook();
+            for (uint256 j = 0; j < i; j++) {
+                if (hooks[j].hook == hooks[i].hook) revert DuplicateHook();
+            }
+            _hooks[permissionId].push(hooks[i]);
+            emit HookAttached(permissionId, hooks[i].hook, hooks[i].config);
+        }
+    }
+
+    function hooksOf(uint256 permissionId) external view returns (Hook[] memory) {
+        return _hooks[permissionId];
+    }
+
+    function _createPermission(
+        address agent,
+        address allowedTarget,
+        uint256 maxSpend,
+        uint64 expiresAt,
+        uint32 maxUses,
+        address asset
+    ) internal returns (uint256 permissionId) {
         require(agent != address(0), "agent=0");
         require(allowedTarget != address(0) || asset != address(0), "target=0");
         require(expiresAt > block.timestamp, "expired");
@@ -123,15 +182,31 @@ contract ReusablePermissionWallet {
     ) external
         returns (bytes memory result)
     {
+        if (_executing) revert Reentered();
+        _executing = true;
+
         Permission storage permission = _consume(permissionId, value);
         if (permission.asset != address(0)) revert NotNativePermission();
         if (target != permission.allowedTarget) revert InvalidTarget();
+        _runHooks(permissionId, target, value, data);
 
         (bool ok, bytes memory returnData) = target.call{value: value}(data);
         if (!ok) revert CallFailed(returnData);
 
         emit Executed(permissionId, msg.sender, target, value, data, memo);
+        _executing = false;
         return returnData;
+    }
+
+    /// @dev A hook's revert is wrapped so it can't pass itself off as one of the wallet's own errors.
+    function _runHooks(uint256 permissionId, address target, uint256 value, bytes calldata data) internal {
+        Hook[] storage hooks = _hooks[permissionId];
+        for (uint256 i = 0; i < hooks.length; i++) {
+            try IPermissionHook(hooks[i].hook).beforeExecute(permissionId, msg.sender, target, value, data, hooks[i].config) {}
+            catch (bytes memory reason) {
+                revert HookRejected(hooks[i].hook, reason);
+            }
+        }
     }
 
     /// @notice Approves one exact EIP-3009 TransferWithAuthorization from this wallet.

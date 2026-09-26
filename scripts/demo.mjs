@@ -31,7 +31,8 @@ if (await rpcIsRunning()) {
 }
 
 console.log("Starting local Anvil chain...");
-const anvil = spawn("anvil", ["--silent"], { stdio: "inherit" });
+// osaka: the approval plugin needs the P-256 precompile (0x100); don't rely on Anvil's default hardfork.
+const anvil = spawn("anvil", ["--hardfork", "osaka", "--silent"], { stdio: "inherit" });
 
 async function waitForRpc() {
   for (let i = 0; i < 40; i++) {
@@ -52,14 +53,14 @@ try {
   await waitForRpc();
 
   const contractsDir = "packages/contracts";
-  const deps = spawnSync("forge", ["install", "foundry-rs/forge-std", "--no-git"], {
-    cwd: contractsDir,
-    encoding: "utf8"
-  });
-  if (deps.status !== 0 && !deps.stderr.includes("already exists")) {
-    console.error(deps.stdout);
-    console.error(deps.stderr);
-    throw new Error("Could not install forge-std");
+  // lib/ is gitignored, so the Solidity dependencies are installed on first run.
+  for (const dep of ["foundry-rs/forge-std", "vectorized/solady@v0.1.26"]) {
+    const deps = spawnSync("forge", ["install", dep, "--no-git"], { cwd: contractsDir, encoding: "utf8" });
+    if (deps.status !== 0 && !deps.stderr.includes("already exists")) {
+      console.error(deps.stdout);
+      console.error(deps.stderr);
+      throw new Error(`Could not install ${dep}`);
+    }
   }
 
   console.log("Deploying demo contracts...");
@@ -81,11 +82,12 @@ try {
     const output = deploy.stdout + deploy.stderr;
     const factory = output.match(/MissionFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const reusableFactory = output.match(/ReusableWalletFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
+    const approvalHook = output.match(/ApprovalHook\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const cafe = output.match(/Cafe\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const ticketOffice = output.match(/TicketOffice\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const tipJar = output.match(/TipJar\s+(0x[a-fA-F0-9]{40})/)?.[1];
 
-    if (!factory || !reusableFactory || !cafe || !ticketOffice || !tipJar) {
+    if (!factory || !reusableFactory || !approvalHook || !cafe || !ticketOffice || !tipJar) {
       throw new Error("Could not read deployed contract addresses");
     }
 
@@ -101,6 +103,7 @@ try {
         ...process.env,
         VITE_FACTORY: factory,
         VITE_REUSABLE_FACTORY: reusableFactory,
+        VITE_APPROVAL_HOOK: approvalHook,
         VITE_MERCHANTS: [cafe, ticketOffice, tipJar].join(",")
       }
     });

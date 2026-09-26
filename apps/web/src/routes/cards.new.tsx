@@ -22,10 +22,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { issueCard } from "@/lib/actions";
 import { publicClient } from "@/lib/chain";
-import { DEFAULT_AGENT } from "@/lib/config";
+import { approvalHook, DEFAULT_AGENT } from "@/lib/config";
 import type { CardKind } from "@/lib/data";
 import { eth, shortAddress } from "@/lib/format";
 import { saveGoal } from "@/lib/goals";
+import { forgetPasskey, passkeysSupported, storedPasskey } from "@/lib/passkey";
 import { useMerchants, useSnapshot } from "@/lib/hooks";
 import { saveScreening, useScreening, type ScreeningResponse, type ScreeningStatus } from "@/lib/screening";
 import { cn } from "@/lib/utils";
@@ -86,6 +87,10 @@ function IssueCard() {
   const [goal, setGoal] = useState("");
   const [agent, setAgent] = useState<string>(DEFAULT_AGENT);
   const [funding, setFunding] = useState("0.02");
+  const [requireApproval, setRequireApproval] = useState(false);
+  const [approvalOver, setApprovalOver] = useState("0.005");
+  const [useTouchId, setUseTouchId] = useState(passkeysSupported);
+  const [hasPasskey, setHasPasskey] = useState(() => storedPasskey() !== null);
   const [submitted, setSubmitted] = useState(false);
 
   const isCustom = merchant === "custom";
@@ -103,6 +108,8 @@ function IssueCard() {
   const maxUses = kind === "one-time" ? 1 : Number(uses);
   const needsAccount = kind === "multi-use" && snapshot?.account === null;
   const accountBalance = snapshot?.account?.balance ?? 0n;
+  const canRequireApproval = kind === "multi-use" && Boolean(approvalHook());
+  const approvalThreshold = canRequireApproval && requireApproval ? parseAmount(approvalOver) : undefined;
 
   const errors = {
     budget: budgetWei === null ? "Enter a budget above 0, like 0.005" : undefined,
@@ -113,6 +120,7 @@ function IssueCard() {
     agent: !isAddress(agent) ? "Enter a valid 0x address" : undefined,
     merchant: isCustom && !merchantReady ? "Enter the merchant's 0x address" : undefined,
     funding: needsAccount && fundingWei === null ? "Enter an amount above 0" : undefined,
+    approval: approvalThreshold === null ? "Enter an amount above 0, like 0.005" : undefined,
   };
   const valid = !Object.values(errors).some(Boolean) && merchantReady && Boolean(owner);
 
@@ -127,6 +135,8 @@ function IssueCard() {
         maxUses,
         validFor: duration,
         accountFunding: fundingWei ?? 0n,
+        approvalThreshold: approvalThreshold ?? undefined,
+        approveWithPasskey: useTouchId,
       }),
     onSuccess: async cardId => {
       if (goal.trim()) saveGoal(cardId, goal.trim());
@@ -278,6 +288,72 @@ function IssueCard() {
           </Field>
         </fieldset>
 
+        {canRequireApproval && (
+          <fieldset className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <label htmlFor="require-approval" className="flex items-center gap-2 font-semibold">
+              <input
+                id="require-approval"
+                type="checkbox"
+                checked={requireApproval}
+                onChange={e => setRequireApproval(e.target.checked)}
+                className="size-4 accent-[var(--banknote)]"
+              />
+              Ask for my approval before big purchases
+            </label>
+            {requireApproval && (
+              <>
+                <Field
+                  label="Big means over (ETH)"
+                  htmlFor="approval"
+                  hint="Any single purchase over this waits until you approve that exact purchase."
+                  error={submitted ? errors.approval : undefined}
+                >
+                  <Input
+                    id="approval"
+                    inputMode="decimal"
+                    value={approvalOver}
+                    onChange={e => setApprovalOver(e.target.value)}
+                    className="bg-paper sm:max-w-48"
+                  />
+                </Field>
+                {passkeysSupported() && (
+                  <div className="space-y-1">
+                    <label htmlFor="touch-id" className="flex items-center gap-2 text-sm">
+                      <input
+                        id="touch-id"
+                        type="checkbox"
+                        checked={useTouchId}
+                        onChange={e => setUseTouchId(e.target.checked)}
+                        className="size-4 accent-[var(--banknote)]"
+                      />
+                      Approve with Touch ID (your passkey), so the app's own key can't approve for you
+                    </label>
+                    {useTouchId && (
+                      <p className="text-sm text-muted-foreground">
+                        {hasPasskey
+                          ? "Uses the passkey already saved in this browser. "
+                          : "You'll be asked to create a passkey when you issue the card. "}
+                        {hasPasskey && (
+                          <button
+                            type="button"
+                            className="underline underline-offset-2"
+                            onClick={() => {
+                              forgetPasskey();
+                              setHasPasskey(false);
+                            }}
+                          >
+                            Use a new passkey
+                          </button>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </fieldset>
+        )}
+
         {kind === "one-time" && (
           <Field label="Task for the agent (optional)" htmlFor="goal" hint="Saved with the card so its command is ready to copy.">
             <Textarea
@@ -332,6 +408,8 @@ function IssueCard() {
               uses: 0,
               expiresAt: Date.now() / 1000 + duration,
               status: "active",
+              approvalThreshold: approvalThreshold ?? undefined,
+              approvalBy: useTouchId ? "passkey" : "owner",
             }}
           />
         )}

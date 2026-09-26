@@ -85,6 +85,49 @@ Known limitations:
   `msg.sender == asset` would close this, but it would also break off-chain ERC-1271 verification (facilitators call it
   via `eth_call`), so it is not done.
 
+## Mode B — plugins
+
+A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts implementing `IPermissionHook.beforeExecute`.
+
+- `createPermissionWithHooks(agent, allowedTarget, maxSpend, expiresAt, maxUses, asset, hooks)`: owner only. Each hook
+  is `{hook, config}`; `config` is that plugin's settings for this permission. Rejected: a token permission
+  (`HooksNeedNativePermission`), a hook with no code (`InvalidHook`), the same hook twice (`DuplicateHook`), more than 4
+  (`TooManyHooks`). `HookAttached(permissionId, hook, config)` is emitted per hook; `hooksOf(permissionId)` lists them.
+- Plugins are fixed at creation. To change the rules, revoke the permission and issue a new one.
+- `execute` order: built-in checks and consumption (`_consume`), native and target checks, every plugin's
+  `beforeExecute` in order, the merchant call. A plugin holds the purchase by reverting; the wallet wraps the reason as
+  `HookRejected(hook, reason)` so a plugin can't pass off one of the wallet's own errors, and the whole purchase
+  (including consumption) is rolled back.
+- `approvePayment` (x402) does not run plugins.
+- `execute` can't be re-entered (`Reentered`), so plugins run once per purchase.
+- Trust model: plugins are code the owner chose. They are called with the wallet as `msg.sender`, key their state by
+  `(msg.sender, permissionId)`, and must not call back into the wallet.
+
+### Approval plugin (`ApprovalHook`)
+
+- Config: `abi.encode(uint256 threshold)` in wei. A purchase with `value <= threshold` passes. A larger one is held
+  with `ApprovalRequired(requestKey)` unless the owner approved that exact purchase.
+- `requestKey = keccak256(abi.encode(wallet, permissionId, target, value, keccak256(data)))`, exposed as `requestKey(...)`.
+- `approve(wallet, permissionId, target, value, data, validUntil)`: the wallet's current owner only; the plugin must be
+  attached to that permission; `validUntil` at most `MAX_APPROVAL_TTL` (1 day) ahead. Emits `Approved`.
+- An approval is used once: `beforeExecute` deletes it and emits `ApprovalUsed`. If the merchant call then fails, the
+  whole purchase rolls back and the approval stays.
+- Per purchase: the threshold applies to each purchase on its own. Splitting a large order into small ones is not
+  caught; only the card's budget and uses bound it.
+- A fake wallet can only approve requests keyed by its own address.
+- An approval recorded before `transferOwnership` stays usable until it expires (at most a day), like the permission
+  itself. The config is fixed, so a config that isn't exactly one word (owner mode) or four words (passkey mode) can
+  never be approved; the app only builds those two shapes.
+- Passkey mode: config `abi.encode(threshold, x, y, rpIdHash)` with the owner's passkey (P-256 public key). Then only
+  `approveWithPasskey(wallet, permissionId, target, value, data, validUntil, auth)` approves, and `approve` reverts
+  `PasskeyRequired`: the owner's account key alone can't approve. Anyone may submit the signature. `auth` is a WebAuthn
+  assertion (solady `WebAuthnAuth`) over `challenge(...) = keccak256(abi.encode(chainid, hook, requestKey,
+  nonces[requestKey], validUntil))`; it must have user verification, `authenticatorData[0:32] == rpIdHash`, and a
+  low-s signature, verified with the P-256 precompile (`0x100`). Each passkey approval bumps `nonces[requestKey]`, so a
+  signature can't be replayed. The origin in `clientDataJSON` is not checked; `rpIdHash` binds the passkey to one site.
+- The plugin's constructor requires the P-256 precompile (or solady's fallback verifier), so both demo scripts start
+  Anvil with `--hardfork osaka` (a fork of Base Sepolia doesn't get the precompile otherwise).
+
 ## Factories
 
 - `MissionFactory.createMission` deploys and funds one Mode A wallet.

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Ban, ShieldX, ShoppingBag, Stamp, Undo2 } from "lucide-react";
+import { Ban, BadgeCheck, Hourglass, ShieldX, ShoppingBag, Stamp, Undo2 } from "lucide-react";
 import type { Activity, Card } from "@/lib/data";
 import { dayLabel, eth, shortAddress, time } from "@/lib/format";
 import { useMerchants } from "@/lib/hooks";
@@ -10,6 +10,7 @@ const icons = {
   issued: Stamp,
   purchase: ShoppingBag,
   blocked: ShieldX,
+  approved: BadgeCheck,
   cancelled: Ban,
   refund: Undo2,
 } as const;
@@ -66,13 +67,24 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
   const merchant =
     merchants?.find(m => m.address.toLowerCase() === card?.merchant.toLowerCase())?.name ??
     (card ? shortAddress(card.merchant) : "an unknown merchant");
-  const Icon = icons[item.kind];
+  const held = item.kind === "blocked" ? item.held : undefined;
+  const Icon = held ? Hourglass : icons[item.kind];
+  const blocked = item.kind === "blocked" && !held;
   const kindLabel = card?.kind === "one-time" ? "one-time" : "multi-use";
 
   const title = {
     issued: `Issued a ${kindLabel} card for ${merchant}`,
     purchase: `Bought ${item.summary ?? "an item"} at ${merchant}`,
-    blocked: `Blocked: ${item.reason ?? "rejected by the card"}`,
+    blocked: held
+      ? held.state === "waiting"
+        ? "Held: waiting for your approval"
+        : held.state === "expired"
+          ? "Held: your approval expired"
+          : held.state === "timed-out"
+            ? "Held: not approved while the agent waited"
+          : "Held for your approval"
+      : `Blocked: ${item.reason ?? "rejected by the card"}`,
+    approved: `You approved ${item.summary ?? "a purchase"}${card?.approvalBy === "passkey" ? " with Touch ID" : ""}`,
     cancelled: `Cancelled the ${merchant} card`,
     refund: `Returned leftovers from the ${merchant} card`,
   }[item.kind];
@@ -91,7 +103,7 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
       ? null
       : item.kind === "purchase"
         ? `−${eth(item.value)}`
-        : item.kind === "blocked"
+        : item.kind === "blocked" || item.kind === "approved"
           ? eth(item.value)
           : `+${eth(item.value)}`;
 
@@ -101,13 +113,19 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
       <span
         className={cn(
           "mt-0.5 grid size-6 place-items-center rounded-full",
-          item.kind === "blocked" ? "bg-void/10 text-void" : item.kind === "purchase" ? "bg-banknote/10 text-banknote" : "bg-intaglio/10 text-intaglio",
+          held
+            ? "bg-amber-500/15 text-amber-700"
+            : blocked
+              ? "bg-void/10 text-void"
+              : item.kind === "purchase" || item.kind === "approved"
+                ? "bg-banknote/10 text-banknote"
+                : "bg-intaglio/10 text-intaglio",
         )}
       >
         <Icon className="size-3.5" aria-hidden="true" />
       </span>
       <div className="min-w-0">
-        <p className={cn("font-medium leading-snug", item.kind === "blocked" && "text-void")}>{title}</p>
+        <p className={cn("font-medium leading-snug", blocked && "text-void", held && "text-amber-800")}>{title}</p>
         {item.memo && <p className="mt-0.5 truncate text-sm text-muted-foreground">“{item.memo}”</p>}
         {detail && <p className="mt-0.5 text-sm text-muted-foreground">{detail}</p>}
       </div>
@@ -115,11 +133,12 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
         <span
           className={cn(
             "pt-0.5 text-right font-medium whitespace-nowrap",
-            item.kind === "blocked" && "text-void/70",
+            blocked && "text-void/70",
+            held && "text-amber-800/80",
             (item.kind === "refund" || item.kind === "cancelled") && "text-banknote",
           )}
         >
-          <span className={cn(item.kind === "blocked" && "line-through")}>{amount}</span>{" "}
+          <span className={cn(blocked && "line-through")}>{amount}</span>{" "}
           <span className="text-xs text-muted-foreground">ETH</span>
         </span>
       )}
