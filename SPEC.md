@@ -118,6 +118,15 @@ A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts impleme
 - An approval recorded before `transferOwnership` stays usable until it expires (at most a day), like the permission
   itself. The config is fixed, so a config that isn't exactly one word (owner mode) or four words (passkey mode) can
   never be approved; the app only builds those two shapes.
+- Passkey mode: config `abi.encode(threshold, x, y, rpIdHash)` with the owner's passkey (P-256 public key). Then only
+  `approveWithPasskey(wallet, permissionId, target, value, data, validUntil, auth)` approves, and `approve` reverts
+  `PasskeyRequired`: the owner's account key alone can't approve. Anyone may submit the signature. `auth` is a WebAuthn
+  assertion (solady `WebAuthnAuth`) over `challenge(...) = keccak256(abi.encode(chainid, hook, requestKey,
+  nonces[requestKey], validUntil))`; it must have user verification, `authenticatorData[0:32] == rpIdHash`, and a
+  low-s signature, verified with the P-256 precompile (`0x100`). Each passkey approval bumps `nonces[requestKey]`, so a
+  signature can't be replayed. The origin in `clientDataJSON` is not checked; `rpIdHash` binds the passkey to one site.
+- The plugin's constructor requires the P-256 precompile (or solady's fallback verifier), so both demo scripts start
+  Anvil with `--hardfork osaka` (a fork of Base Sepolia doesn't get the precompile otherwise).
 
 ## Factories
 
