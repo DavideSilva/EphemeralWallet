@@ -67,8 +67,9 @@ A multi-use card can carry plugins that run before every purchase (see `SPEC.md`
 
 1. Open the app at `http://localhost:5173` (not `127.0.0.1`: passkeys don't work on IP addresses).
 2. Issue a multi-use card and tick **Ask for my approval before big purchases** (big means over `0.005` by default).
-   Leave **Approve with Touch ID** on; the first time, the browser asks you to create a passkey. The card shows
-   "Touch ID over 0.005 ETH".
+   Leave **Approve with Touch ID** on, then **Review and issue** and issue the card (without `INTERCEPTA_API_KEY` the
+   merchant check is "unverified": tick the risk box and **Issue anyway**). The first time, the browser asks you to
+   create a passkey. The card shows "Touch ID over 0.005 ETH".
 3. `npm run agent -- <card> "buy one concert ticket"` goes through on its own.
 4. `npm run agent -- <card> "buy 3 concert tickets"` is **Held**. The agent waits (up to 5 minutes) and the card page
    shows the purchase, decoded from the agent's order, with **Approve with Touch ID**.
