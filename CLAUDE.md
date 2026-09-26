@@ -10,10 +10,11 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 - `npm test` — vitest in `packages/risk`, `apps/agent`, `apps/service`, `apps/web`.
 - `npm --workspace @eaw/web run build` (vite + `tsc`), `npm --workspace @eaw/agent run typecheck`.
 - `cd packages/contracts && forge test` — the Base Sepolia fork test skips unless `BASE_SEPOLIA_RPC_URL` is set.
-- `npm run demo` — card demo on a plain local Anvil chain (port 8545) + web UI on 5173.
-- `npm run x402:local [-- --demo]` — x402 stack on an Anvil fork of Base Sepolia: service (4021), agent daemon (4100),
-  web UI (`/payments`, and the card pages: it deploys `Deploy.s.sol` and sets `VITE_CHAIN_ID=84532` +
-  `VITE_FROM_BLOCK`). Needs `INTERCEPTA_API_KEY` in `.env`. Stop it and check ports 8545/4021/4100/5173 are free.
+- `npm run demo [-- --scenarios]` — the whole demo on an Anvil fork of Base Sepolia (port 8545): card contracts
+  (`Deploy.s.sol`), x402 service (4021), agent daemon (4100), web UI on 5173 (cards + `/payments`, with
+  `VITE_CHAIN_ID=84532` + `VITE_FROM_BLOCK`). `--scenarios` also runs the scripted x402 demo. Needs network access to
+  fork. Without `INTERCEPTA_API_KEY` it still starts and screening fails closed (the client throws
+  `ScreeningUnavailable` without calling out). Stop it and check ports 8545/4021/4100/5173 are free.
 - `npm --workspace @eaw/risk run smoke -- <risky> <clean>` — live Intercepta check; rewrites `packages/risk/test/fixtures/live.json`.
 
 ## Layout
@@ -39,7 +40,7 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 - USDC only moves after a PAY/CAP verdict: the guarded signer calls `approvePayment` only after `decide()`.
 - Intercepta only knows mainnets: payments run on Base Sepolia (84532), screening uses chain `8453` and mainnet USDC.
 - Intercepta 404s Anvil's well-known dev addresses, so anything that gets screened (owner, agent, payee) must use a
-  fresh key; `x402:local` generates them per run.
+  fresh key; `npm run demo` generates them per run.
 - The agent daemon is localhost-only and hardened (loopback `Host` only, writes need JSON plus the UI's exact `Origin`,
   `/pay` limited to the service origin, 64 KiB bodies). Handler lives in `apps/agent/src/x402/daemon-handler.ts` (tested);
   `daemon.ts` only wires it up. Keep it that way.

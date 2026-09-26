@@ -16,7 +16,8 @@ export type InterceptaClient = {
   scanMessage(input: { from: Address; chainId: string; typedData: TypedDataPayload }): Promise<MessageScan>;
 };
 
-type Options = { apiKey: string; baseUrl?: string; timeoutMs?: number; fetchImpl?: typeof fetch };
+/** No `apiKey` means every check fails closed with ScreeningUnavailable and nothing is sent. */
+type Options = { apiKey: string | undefined; baseUrl?: string; timeoutMs?: number; fetchImpl?: typeof fetch };
 
 function asObject(body: unknown): Record<string, unknown> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) throw new Error("not an object");
@@ -97,6 +98,7 @@ export function createInterceptaClient(opts: Options): InterceptaClient {
   }
 
   async function call<T>(check: string, path: string, parse: (body: unknown) => T, body?: unknown): Promise<T> {
+    if (!opts.apiKey) throw new ScreeningUnavailable(check, "INTERCEPTA_API_KEY not set");
     let response: Response;
     try {
       response = await doFetch(`${baseUrl}${path}`, {

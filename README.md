@@ -6,11 +6,15 @@ Hackathon MVP for disposable, task-scoped agent authority.
 
 The project demonstrates two models: **a disposable wallet per mission** for maximum isolation, and **a reusable wallet with multiple disposable permissions** for repeated agent activity.
 
-On top of that, agents can **pay each other over x402** in USDC from a reusable wallet, with every payment screened live by the [Intercepta API](https://intercepta.io) before the agent signs it and before the service accepts it. See [Safe agent-to-agent payments](#safe-agent-to-agent-payments-x402--intercepta); the quickest way to try it is `npm run x402:local -- --demo`.
+On top of that, agents can **pay each other over x402** in USDC from a reusable wallet, with every payment screened live by the [Intercepta API](https://intercepta.io) before the agent signs it and before the service accepts it. See [Safe agent-to-agent payments](#safe-agent-to-agent-payments-x402--intercepta); `npm run demo` runs it alongside the cards, and `npm run demo -- --scenarios` also plays the scripted payment scenarios.
 
 ## Run the demo locally
 
-Requirements: Node.js/npm and Foundry 1.6 or newer (`anvil` + `forge`; the demo chain runs the `osaka` hardfork for the P-256 precompile).
+Requirements: Node.js/npm, Foundry 1.6 or newer (`anvil` + `forge`; the demo chain runs the `osaka` hardfork for the
+P-256 precompile) and network access (the demo forks Base Sepolia from `https://sepolia.base.org`, or
+`BASE_SEPOLIA_RPC_URL`). For live screening put `INTERCEPTA_API_KEY` in `.env` (free key:
+https://intercepta.io/ethglobal). Without it the demo still starts, but screening fails closed: every x402 payment is
+refused and merchants show as unverified.
 
 ```bash
 git clone https://github.com/DavideSilva/EphemeralWallet.git
@@ -21,11 +25,12 @@ npm run demo
 
 `npm run demo`:
 
-1. starts Anvil on `127.0.0.1:8545`
+1. forks Base Sepolia into Anvil on `127.0.0.1:8545` (chain id 84532, real USDC)
 2. installs `forge-std` if needed
 3. deploys `MissionFactory`, `ReusableWalletFactory` and three demo merchants (Café, Ticket office, Tip jar)
-4. passes their addresses to the web app
-5. starts the UI at `http://localhost:5173`
+4. creates fresh owner/agent/facilitator/payee keys, funds them, and creates the two x402 demo wallets
+5. starts the x402 service (port 4021) and the agent daemon (port 4100)
+6. starts the UI at `http://localhost:5173` (cards) and `http://localhost:5173/payments` (x402)
 
 The UI signs as Anvil account #0 (no wallet popups) and issues cards to Anvil account #1 by default. Stop everything with Ctrl-C.
 
@@ -96,7 +101,7 @@ the [Intercepta API](https://intercepta.io) and the verdict — PAY, CAP, HOLD o
   verifying or settling.
 - **Counterparty risk:** every wallet on the other side gets a profile (TRUSTED / CAUTION / BLOCKED) with Intercepta's reasons.
 
-Payments run against Base Sepolia's real USDC contract, either on a local Anvil fork (`npm run x402:local`) or on the public testnet. Screening uses the same addresses' **mainnet** history (Intercepta only covers mainnets). Contract behaviour is specified in [`SPEC.md`](SPEC.md#mode-b--token-permissions-x402).
+Payments run against Base Sepolia's real USDC contract, either on a local Anvil fork (`npm run demo`) or on the public testnet. Screening uses the same addresses' **mainnet** history (Intercepta only covers mainnets). Contract behaviour is specified in [`SPEC.md`](SPEC.md#mode-b--token-permissions-x402).
 
 ### Where the Intercepta API is called
 
@@ -108,12 +113,12 @@ Payments run against Base Sepolia's real USDC contract, either on a local Anvil 
 
 ### Run it locally (Anvil fork of Base Sepolia)
 
-The quickest way to see it work. You only need Foundry and `INTERCEPTA_API_KEY` in `.env`:
+The quickest way to see it work. It's the same `npm run demo` as above, with `INTERCEPTA_API_KEY` in `.env`:
 
 ```bash
 npm install
-npm run x402:local            # fork, deploy, fund, start service + agent daemon + UI
-npm run x402:local -- --demo  # same, plus the scripted four-scenario demo
+npm run demo                  # fork, deploy, fund, start service + agent daemon + UI
+npm run demo -- --scenarios   # same, plus the scripted four-scenario demo
 ```
 
 The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the demo contracts (the wallet factory plus the card contracts, so the card pages work too), creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the agent daemon and the UI at http://localhost:5173 (open http://localhost:5173/payments). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`. If they're unset, the launcher uses two addresses that Intercepta tiers BLOCKED for different reasons: the risky seller is `0x3930…2fed`, an Intercepta test address flagged as a known scammer that received funds from exploits and drainers; the risky wallet's owner is `0x098B…2f96`, the OFAC-sanctioned Ronin bridge exploiter. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
@@ -177,8 +182,7 @@ only allows cross-origin reads from `SERVICE_UI_ORIGIN` (defaults to `AGENT_UI_O
 - Screening fails closed: an Intercepta timeout, error or unexpected response refuses the payment. Intercepta also
   answers 404 ("An Externally Owned Account with this address doesn't exist") for some addresses, such as Anvil's
   well-known dev accounts, so those counterparties are refused too.
-- `npm run x402:local` also deploys the card contracts on the fork, so the card pages and `npm run agent` work there
-  too (chain 84532). The web app reads events only from the block after the fork point (`VITE_FROM_BLOCK`): earlier
+- `npm run demo` runs the cards on the same fork (chain 84532), so the card pages and `npm run agent` work there. The web app reads events only from the block after the fork point (`VITE_FROM_BLOCK`): earlier
   blocks would be fetched from the public Base Sepolia RPC.
 
 ### Intercepta API feedback
@@ -226,7 +230,7 @@ It runs on the public testnet with no screening or wallet contracts: each report
 - `apps/service`: x402-paid API with an Intercepta payer gate in front of its facilitator
 - `apps/weather`: mock x402 service selling Mount Fuji weather reports
 - `apps/web`: React app (TanStack Router and Query, wagmi, shadcn/ui) for cards and activity, plus the x402 payments page (`/payments`)
-- `scripts/demo.mjs`: local demo orchestrator; `scripts/x402-local.mjs`: x402 demo on an Anvil fork of Base Sepolia
+- `scripts/demo.mjs`: local demo orchestrator (cards + x402 on an Anvil fork of Base Sepolia)
 
 ## Current scope
 

@@ -38,7 +38,7 @@ const wallet: Address = walletPart;
 const permissionId = permissionPart === undefined ? undefined : BigInt(permissionPart);
 
 const rpc = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-// Local Anvil either way: 31337 from npm run demo, 84532 when npm run x402:local forks Base Sepolia.
+// Local Anvil: 84532 from npm run demo's Base Sepolia fork, 31337 on a plain Anvil chain.
 const chainId = await createPublicClient({ transport: http(rpc) }).getChainId();
 const chain = chainId === foundry.id ? foundry : { ...foundry, id: chainId, name: `Local fork (${chainId})` };
 const publicClient = createPublicClient({ chain, transport: http(rpc) });
