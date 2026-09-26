@@ -1,12 +1,12 @@
 import { isAddress, type Address } from "viem";
 
 function address(value: string | undefined, name: string): Address {
-  if (!value || !isAddress(value)) throw new Error(`${name} is not set. Start the app with npm run demo or npm run x402:local.`);
+  if (!value || !isAddress(value)) throw new Error(`${name} is not set. Start the app with npm run demo.`);
   return value;
 }
 
 export const RPC_URL = "http://127.0.0.1:8545";
-// 31337 for the plain Anvil chain (npm run demo); npm run x402:local sets 84532 (its Base Sepolia fork).
+// npm run demo sets 84532 (its Base Sepolia fork); 31337 covers a plain Anvil chain.
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? 31337);
 // First block the app reads events and blocks from. 0 on a fresh chain; on a fork, the first block after the fork
 // point, since anything earlier is forwarded to the public RPC (tens of millions of blocks).

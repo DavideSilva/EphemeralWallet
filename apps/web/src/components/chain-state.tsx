@@ -19,8 +19,7 @@ export function WithSnapshot({ children }: { children: (snapshot: Snapshot) => R
         <h2 className="font-semibold text-void">Can't load your cards</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           The app reads cards from Anvil at 127.0.0.1:8545 and needs the addresses of the contracts deployed there. Start
-          everything with <code className="font-mono">npm run demo</code> or <code className="font-mono">npm run x402:local</code>,
-          then reload this page.
+          everything with <code className="font-mono">npm run demo</code>, then reload this page.
         </p>
         <p className="mt-3 font-mono text-xs break-all text-muted-foreground">{error.message.split("\n")[0]}</p>
       </div>

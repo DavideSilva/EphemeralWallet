@@ -18,6 +18,23 @@ describe("intercepta client", () => {
     expect((init.headers as Record<string, string>)["X-API-KEY"]).toBe("k");
   });
 
+  it("fails closed without calling Intercepta when no API key is set", async () => {
+    const fetchImpl = fakeFetch(200, { toxicScore: 0, traits: [] });
+    const client = createInterceptaClient({ apiKey: undefined, fetchImpl });
+    const calls = [
+      client.quickScanAddress(ADDR),
+      client.deepScanAddress(ADDR),
+      client.summarizeAddress(ADDR),
+      client.scanToken(ADDR, "8453"),
+      client.scanMessage({ from: ADDR, chainId: "8453", typedData: { domain: {}, types: {}, primaryType: "X", message: {} } })
+    ];
+    for (const call of calls) {
+      await expect(call).rejects.toBeInstanceOf(ScreeningUnavailable);
+      await expect(call).rejects.toThrow(/INTERCEPTA_API_KEY not set/);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("treats a missing traits array as a clean scan", async () => {
     const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, { toxicScore: 0 }) });
     expect(await client.deepScanAddress(ADDR)).toEqual({ toxicScore: 0, traits: [] });

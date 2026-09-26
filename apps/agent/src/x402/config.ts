@@ -5,7 +5,7 @@ export type WalletRef = { wallet: Address; permissionId: bigint };
 export type AgentConfig = {
   rpcUrl: string;
   agentKey: Hex;
-  interceptaKey: string;
+  interceptaKey: string | undefined;
   port: number;
   serviceUrl: string;
   uiOrigin: string;
@@ -32,7 +32,8 @@ export function loadAgentConfig(): AgentConfig {
   return {
     rpcUrl: process.env.RPC_URL ?? "https://sepolia.base.org",
     agentKey: required("AGENT_PRIVATE_KEY") as Hex,
-    interceptaKey: required("INTERCEPTA_API_KEY"),
+    // Optional: without it every screening fails closed (payments refused), it never passes as clean.
+    interceptaKey: process.env.INTERCEPTA_API_KEY || undefined,
     port: Number(process.env.AGENT_PORT ?? 4100),
     serviceUrl: process.env.SERVICE_URL ?? "http://localhost:4021",
     uiOrigin: process.env.AGENT_UI_ORIGIN ?? "http://localhost:5173",
