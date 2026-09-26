@@ -1,5 +1,5 @@
 // x402 surface. Wallet and factory ABIs come from abis.ts so both stay in sync with the contracts.
-export { reusableWalletAbi, reusableFactoryAbi as reusableWalletFactoryAbi } from "./abis";
+export { approvalHookAbi, reusableWalletAbi, reusableFactoryAbi as reusableWalletFactoryAbi } from "./abis";
 
 export const USDC_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
 

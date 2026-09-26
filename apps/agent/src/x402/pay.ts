@@ -30,6 +30,7 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
     screen: createScreener({ client: ctx.client, profiler: ctx.profiler }),
     readPermission: gateway.readPermission,
     approve: gateway.approve,
+    ownerApproval: gateway.ownerApproval,
     paidBefore: ctx.store.paidBefore,
     approvedFor,
     onVerdict: e => { seen = { verdict: e.verdict, auth: e.auth, approveTx: e.approveTx, payee: e.screening.payee }; }
@@ -71,7 +72,8 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
       const decision = ctx.store.addDecision({ ...base, ...detail(), status: error.verdict.kind === "HOLD" ? "held" : "refused" });
       if (error.verdict.kind === "HOLD" && seen) {
         const hold = ctx.store.addHold({
-          decisionId: decision.id, url, walletKey, payTo: seen.auth.to, amount: seen.auth.value.toString(), reasons: error.verdict.reasons
+          decisionId: decision.id, url, walletKey, payTo: seen.auth.to, amount: seen.auth.value.toString(), reasons: error.verdict.reasons,
+          wallet: ref.wallet, permissionId: ref.permissionId.toString()
         });
         decision.holdId = hold.id;
       }

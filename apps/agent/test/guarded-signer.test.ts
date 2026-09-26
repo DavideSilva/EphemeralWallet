@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { decodeAbiParameters, size } from "viem";
 import { DEFAULT_POLICY, type ScreeningResult } from "@eaw/risk";
-import { createGuardedSigner, PaymentBlocked, type GuardDeps } from "../src/x402/guarded-signer";
+import { createGuardedSigner, NeedsTouchId, PaymentBlocked, type GuardDeps } from "../src/x402/guarded-signer";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PAYEE = "0x2222222222222222222222222222222222222222";
@@ -117,5 +117,38 @@ describe("guarded signer", () => {
     expect(err).toBeInstanceOf(PaymentBlocked);
     expect((err as PaymentBlocked).verdict.kind).toBe("REFUSE");
     expect(d.approve).not.toHaveBeenCalled();
+  });
+
+  describe("wallet approval plugin", () => {
+    it("holds a first payment to a new payee even when screening says PAY", async () => {
+      const d = deps({ ownerApproval: vi.fn(async () => ({ required: true as const, approved: false, reason: "new_payee" as const })) });
+      const err = await createGuardedSigner(d).signTypedData(typedData(10_000n)).catch(e => e);
+      expect(err).toBeInstanceOf(PaymentBlocked);
+      expect((err as PaymentBlocked).verdict).toMatchObject({ kind: "HOLD", reasons: [{ code: "touch_id_new_payee" }] });
+      expect(d.approve).not.toHaveBeenCalled();
+      expect(d.onVerdict).toHaveBeenCalledWith(expect.objectContaining({ verdict: expect.objectContaining({ kind: "HOLD" }) }));
+    });
+
+    it("pays once the owner's Touch ID approval is on-chain", async () => {
+      const d = deps({ ownerApproval: vi.fn(async () => ({ required: true as const, approved: true, reason: "new_payee" as const })) });
+      await createGuardedSigner(d).signTypedData(typedData(10_000n));
+      expect(d.approve).toHaveBeenCalled();
+    });
+
+    it("says it needs Touch ID when the owner approved in the app but not on-chain", async () => {
+      const d = deps({
+        approvedFor: { payTo: PAYEE, amount: 10_000n },
+        ownerApproval: vi.fn(async () => ({ required: true as const, approved: false, reason: "new_payee" as const }))
+      });
+      await expect(createGuardedSigner(d).signTypedData(typedData(10_000n))).rejects.toBeInstanceOf(NeedsTouchId);
+      expect(d.approve).not.toHaveBeenCalled();
+    });
+
+    it("doesn't ask the chain about payments screening already refused", async () => {
+      const ownerApproval = vi.fn();
+      const d = deps({ ownerApproval, screen: vi.fn(async () => ({ ...clean, payee: { ...clean.payee!, tier: "BLOCKED" as const } })) });
+      await expect(createGuardedSigner(d).signTypedData(typedData(10_000n))).rejects.toBeInstanceOf(PaymentBlocked);
+      expect(ownerApproval).not.toHaveBeenCalled();
+    });
   });
 });

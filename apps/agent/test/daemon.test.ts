@@ -46,7 +46,7 @@ async function start(pay: DaemonDeps["pay"] = vi.fn()) {
 
 function heldDecision(store: ReturnType<typeof createStore>) {
   const original = store.addDecision({ url: `${SERVICE}/bulk-dataset`, wallet: WALLET, permissionId: "0", status: "held" });
-  const hold = store.addHold({ decisionId: original.id, url: original.url, walletKey: "default", payTo: PAYEE, amount: "300000", reasons: [] });
+  const hold = store.addHold({ decisionId: original.id, url: original.url, walletKey: "default", wallet: "0x1111111111111111111111111111111111111111", permissionId: "0", payTo: PAYEE, amount: "300000", reasons: [] });
   return { original, hold };
 }
 

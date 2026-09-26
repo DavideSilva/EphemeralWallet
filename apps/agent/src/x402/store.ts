@@ -31,6 +31,9 @@ export type Hold = {
   decisionId: string;
   url: string;
   walletKey: "default" | "risky";
+  /** The paying wallet and permission: what a Touch ID approval in the app has to target. */
+  wallet: Address;
+  permissionId: string;
   payTo: Address;
   amount: string;
   reasons: Reason[];
