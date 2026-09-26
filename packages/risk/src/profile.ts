@@ -18,9 +18,9 @@ export const BLOCKING_TRAITS: ReadonlySet<string> = new Set([
   "mixer_transfers"
 ]);
 
-export function tierFor(traits: Trait[], cautionMinRisk: number): Tier {
+export function tierFor(traits: Trait[], cautionMinRisk: number, toxicScore = 0, toxicCautionMin = 50): Tier {
   if (traits.some(t => BLOCKING_TRAITS.has(t.name))) return "BLOCKED";
-  if (traits.some(t => t.risk >= cautionMinRisk)) return "CAUTION";
+  if (traits.some(t => t.risk >= cautionMinRisk) || toxicScore >= toxicCautionMin) return "CAUTION";
   return "TRUSTED";
 }
 
@@ -35,10 +35,11 @@ function mergeTraits(...lists: Trait[][]): Trait[] {
 
 export function createProfiler(
   client: InterceptaClient,
-  opts: { ttlMs?: number; cautionMinRisk?: number; now?: () => number } = {}
+  opts: { ttlMs?: number; cautionMinRisk?: number; toxicCautionMin?: number; now?: () => number } = {}
 ): Profiler {
   const ttlMs = opts.ttlMs ?? 5 * 60_000;
   const cautionMinRisk = opts.cautionMinRisk ?? 1;
+  const toxicCautionMin = opts.toxicCautionMin ?? 50;
   const now = opts.now ?? Date.now;
   const cache = new Map<string, { at: number; scan: Omit<Profile, "reasons"> & { traits: Trait[] } }>();
 
@@ -55,10 +56,11 @@ export function createProfiler(
     const labels = [overview.ens, overview.projectName, overview.isContract ? "contract" : undefined].filter(
       (label): label is string => Boolean(label)
     );
+    const toxicScore = Math.max(quick.toxicScore, deep.toxicScore);
     const result = {
       address,
-      tier: tierFor(traits, cautionMinRisk),
-      toxicScore: Math.max(quick.toxicScore, deep.toxicScore),
+      tier: tierFor(traits, cautionMinRisk, toxicScore, toxicCautionMin),
+      toxicScore,
       labels,
       traits,
       screenedAt: new Date(now()).toISOString()
@@ -70,7 +72,9 @@ export function createProfiler(
   return {
     async getProfile(address, source = "payee") {
       const { traits, ...rest } = await scan(address);
-      return { ...rest, reasons: traits.map(t => ({ source, code: t.name, detail: t.description })) };
+      const reasons: Reason[] = traits.map(t => ({ source, code: t.name, detail: t.description }));
+      if (rest.toxicScore >= toxicCautionMin) reasons.push({ source, code: "toxic_score", detail: `Intercepta toxic score ${rest.toxicScore}` });
+      return { ...rest, reasons };
     }
   };
 }

@@ -21,6 +21,8 @@ describe("tierFor", () => {
   it("cautions on other traits at or above the threshold", () => expect(tierFor([trait("non_kyc_transfers", 30)], 1)).toBe("CAUTION"));
   it("ignores zero-risk traits", () => expect(tierFor([trait("non_kyc_transfers", 0)], 1)).toBe("TRUSTED"));
   it("trusts an empty trait list", () => expect(tierFor([], 1)).toBe("TRUSTED"));
+  it("cautions on a high deep-scan toxic score", () => expect(tierFor([], 1, 90)).toBe("CAUTION"));
+  it("trusts a low toxic score", () => expect(tierFor([], 1, 10)).toBe("TRUSTED"));
 });
 
 describe("createProfiler", () => {
@@ -31,6 +33,15 @@ describe("createProfiler", () => {
     expect(profile.toxicScore).toBe(20);
     expect(profile.reasons).toEqual([{ source: "payee", code: "known_scammer", detail: "known_scammer desc" }]);
     expect(profile.labels).toContain("alice.eth");
+  });
+
+  it("cautions on a toxic score with no traits and explains why", async () => {
+    const client = fakeClient([]);
+    (client.quickScanAddress as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ toxicScore: 80, traits: [] });
+    const profile = await createProfiler(client).getProfile(A);
+    expect(profile.tier).toBe("CAUTION");
+    expect(profile.toxicScore).toBe(80);
+    expect(profile.reasons).toContainEqual({ source: "payee", code: "toxic_score", detail: "Intercepta toxic score 80" });
   });
 
   it("labels reasons with the requested source", async () => {
@@ -70,9 +81,17 @@ const hasLiveFixture = existsSync(fixtureUrl);
 describe.runIf(hasLiveFixture)("recorded live responses", () => {
   const live = hasLiveFixture ? JSON.parse(readFileSync(fixtureUrl, "utf8")) : undefined;
   it("tiers the Discord risky address as BLOCKED", () => {
-    expect(tierFor([...live.riskyQuick.traits, ...live.riskyDeep.traits], 1)).toBe("BLOCKED");
+    expect(tierFor(
+      [...live.riskyQuick.traits, ...live.riskyDeep.traits],
+      1,
+      Math.max(live.riskyQuick.toxicScore ?? 0, live.riskyDeep.toxicScore ?? 0)
+    )).toBe("BLOCKED");
   });
   it("tiers the clean payee as TRUSTED", () => {
-    expect(tierFor([...live.cleanQuick.traits, ...live.cleanDeep.traits], 1)).toBe("TRUSTED");
+    expect(tierFor(
+      [...live.cleanQuick.traits, ...live.cleanDeep.traits],
+      1,
+      Math.max(live.cleanQuick.toxicScore ?? 0, live.cleanDeep.toxicScore ?? 0)
+    )).toBe("TRUSTED");
   });
 });

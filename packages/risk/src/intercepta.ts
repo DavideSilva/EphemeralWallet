@@ -55,21 +55,27 @@ function parseDetectors(value: unknown) {
   return Array.isArray(value) ? value.map(d => ({ code: String(d.code), description: String(d.description ?? d.code) })) : [];
 }
 
+/** Case-insensitive whitelist match returning the canonical spelling; anything else throws (fail closed). */
+function oneOf<T extends string>(field: string, value: unknown, allowed: readonly T[]): T {
+  if (typeof value !== "string") throw new Error(`missing ${field}`);
+  const match = allowed.find(a => a.toLowerCase() === value.toLowerCase());
+  if (!match) throw new Error(`unknown ${field} ${JSON.stringify(value)}`);
+  return match;
+}
+
 function parseToken(body: unknown): TokenScan {
   const o = asObject(body);
-  if (typeof o.riskLevel !== "string") throw new Error("missing riskLevel");
   return {
-    riskLevel: o.riskLevel as TokenScan["riskLevel"],
-    trust: (o.trust as TokenScan["trust"]) ?? "neutral",
-    action: (o.action as TokenScan["action"]) ?? "info",
+    riskLevel: oneOf("riskLevel", o.riskLevel, ["neutral", "low", "medium", "high"] as const),
+    trust: o.trust === undefined || o.trust === null ? "neutral" : oneOf("trust", o.trust, ["whitelist", "blocklist", "neutral"] as const),
+    action: o.action === undefined || o.action === null ? "info" : oneOf("action", o.action, ["block", "warn", "info"] as const),
     detectors: parseDetectors(o.detectors)
   };
 }
 
 function parseMessage(body: unknown): MessageScan {
   const o = asObject(body);
-  if (typeof o.riskGroup !== "string") throw new Error("missing riskGroup");
-  return { riskGroup: o.riskGroup as MessageScan["riskGroup"], detectors: parseDetectors(o.detectors) };
+  return { riskGroup: oneOf("riskGroup", o.riskGroup, ["Low", "Medium", "High"] as const), detectors: parseDetectors(o.detectors) };
 }
 
 const jsonReplacer = (_key: string, value: unknown) => (typeof value === "bigint" ? value.toString() : value);
@@ -78,6 +84,12 @@ export function createInterceptaClient(opts: Options): InterceptaClient {
   const baseUrl = opts.baseUrl ?? "https://api.web3antivirus.io";
   const timeoutMs = opts.timeoutMs ?? 5000;
   const doFetch = opts.fetchImpl ?? fetch;
+
+  const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+  /** Path parameters must be real addresses: never let a crafted value steer our API key to another endpoint. */
+  function checked(check: string, address: string): Promise<void> {
+    return ADDRESS_RE.test(address) ? Promise.resolve() : Promise.reject(new ScreeningUnavailable(check, "invalid address"));
+  }
 
   async function call<T>(check: string, path: string, parse: (body: unknown) => T, body?: unknown): Promise<T> {
     let response: Response;
@@ -106,11 +118,16 @@ export function createInterceptaClient(opts: Options): InterceptaClient {
   }
 
   return {
-    quickScanAddress: address => call("quick-scan", `/api/public/v2/extension/account/${address}/quick-scan`, parseAddressScan),
-    deepScanAddress: address => call("deep-scan", `/api/public/v2/extension/account/${address}/toxic-score`, parseAddressScan),
-    summarizeAddress: address => call("summarize", `/api/public/v1/extension/security/${address}/overview`, parseOverview),
+    quickScanAddress: address =>
+      checked("quick-scan", address).then(() => call("quick-scan", `/api/public/v2/extension/account/${address}/quick-scan`, parseAddressScan)),
+    deepScanAddress: address =>
+      checked("deep-scan", address).then(() => call("deep-scan", `/api/public/v2/extension/account/${address}/toxic-score`, parseAddressScan)),
+    summarizeAddress: address =>
+      checked("summarize", address).then(() => call("summarize", `/api/public/v1/extension/security/${address}/overview`, parseOverview)),
     scanToken: (address, chainId) =>
-      call("scan-token", `/api/public/v2/extension/token-intelligence/token/${address}/risks?chainId=${chainId}`, parseToken),
+      checked("scan-token", address).then(() =>
+        call("scan-token", `/api/public/v2/extension/token-intelligence/token/${address}/risks?chainId=${chainId}`, parseToken)
+      ),
     scanMessage: ({ from, chainId, typedData }) =>
       call("scan-message", "/api/public/v2/extension/analysis/signature", parseMessage, {
         from,

@@ -68,4 +68,60 @@ describe("intercepta client", () => {
     expect(body.chainId).toBe("8453");
     expect(JSON.parse(body.message).message.value).toBe("10");
   });
+  it("normalizes an upper-case token riskLevel", async () => {
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, { riskLevel: "HIGH", trust: "Neutral", action: "BLOCK" }) });
+    const scan = await client.scanToken(ADDR, "8453");
+    expect(scan.riskLevel).toBe("high");
+    expect(scan.trust).toBe("neutral");
+    expect(scan.action).toBe("block");
+  });
+
+  it("defaults a missing trust/action and maps non-empty detectors", async () => {
+    const client = createInterceptaClient({
+      apiKey: "k",
+      fetchImpl: fakeFetch(200, { riskLevel: "low", detectors: [{ code: "honeypot", description: "Honeypot token" }, { code: "mint" }] })
+    });
+    const scan = await client.scanToken(ADDR, "8453");
+    expect(scan.trust).toBe("neutral");
+    expect(scan.action).toBe("info");
+    expect(scan.detectors).toEqual([{ code: "honeypot", description: "Honeypot token" }, { code: "mint", description: "mint" }]);
+  });
+
+  it("fails closed on an unknown token riskLevel", async () => {
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, { riskLevel: "critical" }) });
+    await expect(client.scanToken(ADDR, "8453")).rejects.toThrow(/unexpected body/);
+  });
+
+  it("fails closed on an unknown token trust", async () => {
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, { riskLevel: "low", trust: "greylist" }) });
+    await expect(client.scanToken(ADDR, "8453")).rejects.toThrow(/unexpected body/);
+  });
+
+  it("fails closed on an unknown token action", async () => {
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, { riskLevel: "low", action: "quarantine" }) });
+    await expect(client.scanToken(ADDR, "8453")).rejects.toThrow(/unexpected body/);
+  });
+
+  it("normalizes a lower-case message riskGroup", async () => {
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, { riskGroup: "high" }) });
+    const typedData = { domain: {}, types: {}, primaryType: "X", message: {} };
+    expect((await client.scanMessage({ from: ADDR, chainId: "8453", typedData })).riskGroup).toBe("High");
+  });
+
+  it("fails closed on an unknown message riskGroup", async () => {
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl: fakeFetch(200, { riskGroup: "critical" }) });
+    const typedData = { domain: {}, types: {}, primaryType: "X", message: {} };
+    await expect(client.scanMessage({ from: ADDR, chainId: "8453", typedData })).rejects.toThrow(/unexpected body/);
+  });
+
+  it("rejects a non-address path parameter without fetching", async () => {
+    const fetchImpl = fakeFetch(200, { toxicScore: 0 });
+    const client = createInterceptaClient({ apiKey: "k", fetchImpl });
+    const bad = "../../v1/x" as `0x${string}`;
+    await expect(client.quickScanAddress(bad)).rejects.toThrow(/invalid address/);
+    await expect(client.deepScanAddress(bad)).rejects.toBeInstanceOf(ScreeningUnavailable);
+    await expect(client.summarizeAddress(bad)).rejects.toThrow(/invalid address/);
+    await expect(client.scanToken(bad, "8453")).rejects.toThrow(/invalid address/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });
