@@ -16,7 +16,7 @@ contract Deploy is Script {
         cafeItems[0] = Merchant.Item("Espresso", 0.001 ether);
         cafeItems[1] = Merchant.Item("Flat white", 0.0015 ether);
         cafeItems[2] = Merchant.Item("Croissant", 0.002 ether);
-        Merchant cafe = new Merchant("Cafe", cafeItems);
+        Merchant cafe = new Merchant(unicode"Café", cafeItems);
 
         Merchant.Item[] memory ticketItems = new Merchant.Item[](3);
         ticketItems[0] = Merchant.Item("Metro pass", 0.001 ether);

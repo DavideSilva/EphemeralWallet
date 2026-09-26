@@ -101,8 +101,7 @@ try {
         ...process.env,
         VITE_FACTORY: factory,
         VITE_REUSABLE_FACTORY: reusableFactory,
-        VITE_MERCHANTS: [cafe, ticketOffice, tipJar].join(","),
-        VITE_DEMO_SHOP: cafe
+        VITE_MERCHANTS: [cafe, ticketOffice, tipJar].join(",")
       }
     });
 
