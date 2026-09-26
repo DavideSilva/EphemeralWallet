@@ -153,6 +153,44 @@ export const reusableWalletAbi = [
   },
   {
     type: "function",
+    name: "createPermissionWithHooks",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "agent", type: "address" },
+      { name: "allowedTarget", type: "address" },
+      { name: "maxSpend", type: "uint256" },
+      { name: "expiresAt", type: "uint64" },
+      { name: "maxUses", type: "uint32" },
+      { name: "asset", type: "address" },
+      {
+        name: "hooks",
+        type: "tuple[]",
+        components: [
+          { name: "hook", type: "address" },
+          { name: "config", type: "bytes" },
+        ],
+      },
+    ],
+    outputs: [{ name: "permissionId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "hooksOf",
+    stateMutability: "view",
+    inputs: [{ name: "permissionId", type: "uint256" }],
+    outputs: [
+      {
+        name: "hooks",
+        type: "tuple[]",
+        components: [
+          { name: "hook", type: "address" },
+          { name: "config", type: "bytes" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
     name: "execute",
     stateMutability: "nonpayable",
     inputs: [
@@ -254,6 +292,15 @@ export const reusableWalletAbi = [
   },
   {
     type: "event",
+    name: "HookAttached",
+    inputs: [
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "hook", type: "address" },
+      { indexed: false, name: "config", type: "bytes" },
+    ],
+  },
+  {
+    type: "event",
     name: "PermissionCreated",
     inputs: [
       { indexed: true, name: "permissionId", type: "uint256" },
@@ -332,6 +379,19 @@ export const reusableWalletAbi = [
   { type: "error", name: "AuthorizationOutlivesPermission", inputs: [] },
   { type: "error", name: "NonceAlreadyApproved", inputs: [] },
   { type: "error", name: "InvalidAuthorizationWindow", inputs: [] },
+  { type: "error", name: "InvalidHook", inputs: [] },
+  { type: "error", name: "DuplicateHook", inputs: [] },
+  { type: "error", name: "TooManyHooks", inputs: [] },
+  { type: "error", name: "HooksNeedNativePermission", inputs: [] },
+  {
+    type: "error",
+    name: "HookRejected",
+    inputs: [
+      { name: "hook", type: "address" },
+      { name: "reason", type: "bytes" },
+    ],
+  },
+  { type: "error", name: "Reentered", inputs: [] },
 ] as const;
 
 export const merchantAbi = [
