@@ -135,7 +135,7 @@ try {
   const factory = deployed("ReusableWalletFactory");
   const missionFactory = deployed("MissionFactory");
   const approvalHook = deployed("ApprovalHook");
-  const merchants = ["Cafe", "TicketOffice", "TipJar"].map(deployed);
+  const merchants = ["TeamLab", "RailOffice", "Ryokan"].map(deployed);
   if (deploy.status !== 0 || !factory || !missionFactory || !approvalHook || merchants.some(m => !m)) {
     console.error(deploy.stdout, deploy.stderr);
     throw new Error("Could not deploy the demo contracts");

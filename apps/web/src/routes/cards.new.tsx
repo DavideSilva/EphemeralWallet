@@ -25,7 +25,7 @@ import { publicClient } from "@/lib/chain";
 import { approvalHook, DEFAULT_AGENT } from "@/lib/config";
 import { fetchSnapshot, type CardKind } from "@/lib/data";
 import { eth, money, shortAddress, unit } from "@/lib/format";
-import { saveGoal } from "@/lib/goals";
+import { exampleGoal, saveGoal } from "@/lib/goals";
 import { forgetPasskey, passkeysSupported, storedPasskey } from "@/lib/passkey";
 import { useMerchants, useSnapshot } from "@/lib/hooks";
 import { saveScreening, useScreening, type ScreeningResponse, type ScreeningStatus } from "@/lib/screening";
@@ -82,7 +82,7 @@ function IssueCard() {
     const timer = setTimeout(() => setRevealed(true), 1100);
     return () => clearTimeout(timer);
   }, [confirming]);
-  const [budget, setBudget] = useState("0.005");
+  const [budget, setBudget] = useState("0.02");
   const [uses, setUses] = useState("3");
   const [duration, setDuration] = useState(durations[1].seconds);
   const [goal, setGoal] = useState("");
@@ -105,11 +105,6 @@ function IssueCard() {
   // one-time (ETH) card paying an x402 seller.
   const kind: CardKind = asset ? "multi-use" : pickedKind;
   const screening = useScreening(merchantReady ? chosenMerchant : undefined);
-  const { data: hasShop } = useQuery({
-    queryKey: ["has-shop", chosenMerchant.toLowerCase()],
-    queryFn: async () => Boolean(await publicClient.getCode({ address: chosenMerchant as Address })),
-    enabled: isCustom && merchantReady,
-  });
   const budgetWei = parseAmount(budget, asset);
   const fundingWei = parseAmount(funding);
   const maxUses = kind === "one-time" ? 1 : Number(uses);
@@ -119,7 +114,7 @@ function IssueCard() {
   const approvalThreshold = canRequireApproval && requireApproval ? parseAmount(approvalOver) : undefined;
 
   const errors = {
-    budget: budgetWei === null ? "Enter a budget above 0, like 0.005" : undefined,
+    budget: budgetWei === null ? "Enter a budget above 0, like 0.02" : undefined,
     uses:
       kind === "multi-use" && !(Number.isInteger(maxUses) && maxUses >= 1 && maxUses <= 1000)
         ? "Enter a whole number from 1 to 1000"
@@ -229,7 +224,7 @@ function IssueCard() {
             value={isCustom ? "custom" : chosenMerchant}
             onValueChange={value => {
               const next = merchants?.find(m => m.address === value);
-              if (Boolean(next?.asset) !== Boolean(asset)) setBudget(next?.asset ? "0.05" : "0.005");
+              if (Boolean(next?.asset) !== Boolean(asset)) setBudget(next?.asset ? "0.05" : "0.02");
               setMerchant(value as Address | "custom");
             }}
             className="grid gap-3 sm:grid-cols-2"
@@ -279,11 +274,6 @@ function IssueCard() {
                 label="Merchant address"
                 htmlFor="custom-merchant"
                 error={submitted ? errors.merchant : undefined}
-                hint={
-                  merchantReady && hasShop === false
-                    ? "There's no shop contract at this address on the local chain, so the agent won't find anything to buy."
-                    : undefined
-                }
               >
                 <Input
                   id="custom-merchant"
@@ -402,7 +392,7 @@ function IssueCard() {
               rows={2}
               value={goal}
               onChange={e => setGoal(e.target.value)}
-              placeholder="Get me a flat white"
+              placeholder={exampleGoal(chosen?.items)}
               className="bg-card"
             />
           </Field>
@@ -505,11 +495,6 @@ function IssueCard() {
                 result={screening.data ?? (screening.error ? unreachable(chosenMerchant, screening.error) : undefined)}
                 pending={!revealed || (screening.isPending && !screening.error)}
               />
-              {revealed && isCustom && hasShop === false && screening.data?.status !== "blocked" && (
-                <p className="rounded-lg bg-paper-deep p-3 text-sm">
-                  No shop contract lives at this address on the local chain, so the agent won't find anything to buy.
-                </p>
-              )}
             </div>
           </div>
 

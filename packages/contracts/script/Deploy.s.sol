@@ -14,30 +14,30 @@ contract Deploy is Script {
         ReusableWalletFactory reusableFactory = new ReusableWalletFactory();
         ApprovalHook approvalHook = new ApprovalHook();
 
-        Merchant.Item[] memory cafeItems = new Merchant.Item[](3);
-        cafeItems[0] = Merchant.Item("Espresso", 0.001 ether);
-        cafeItems[1] = Merchant.Item("Flat white", 0.0015 ether);
-        cafeItems[2] = Merchant.Item("Croissant", 0.002 ether);
-        Merchant cafe = new Merchant(unicode"Café", cafeItems);
+        Merchant.Item[] memory teamLabItems = new Merchant.Item[](3);
+        teamLabItems[0] = Merchant.Item("Adult ticket", 0.005 ether);
+        teamLabItems[1] = Merchant.Item("Child ticket", 0.002 ether);
+        teamLabItems[2] = Merchant.Item("Art book", 0.003 ether);
+        Merchant teamLab = new Merchant("teamLab Borderless", teamLabItems);
 
-        Merchant.Item[] memory ticketItems = new Merchant.Item[](3);
-        ticketItems[0] = Merchant.Item("Metro pass", 0.001 ether);
-        ticketItems[1] = Merchant.Item("Cinema ticket", 0.002 ether);
-        ticketItems[2] = Merchant.Item("Concert ticket", 0.005 ether);
-        Merchant ticketOffice = new Merchant("Ticket office", ticketItems);
+        Merchant.Item[] memory railItems = new Merchant.Item[](3);
+        railItems[0] = Merchant.Item("Tokyo Metro day pass", 0.001 ether);
+        railItems[1] = Merchant.Item("Fuji Excursion ticket", 0.002 ether);
+        railItems[2] = Merchant.Item("Shinkansen ticket", 0.005 ether);
+        Merchant rail = new Merchant("JR ticket office", railItems);
 
-        Merchant.Item[] memory tipItems = new Merchant.Item[](3);
-        tipItems[0] = Merchant.Item("Small tip", 0.0005 ether);
-        tipItems[1] = Merchant.Item("Regular tip", 0.001 ether);
-        tipItems[2] = Merchant.Item("Generous tip", 0.003 ether);
-        Merchant tipJar = new Merchant("Tip jar", tipItems);
+        Merchant.Item[] memory ryokanItems = new Merchant.Item[](3);
+        ryokanItems[0] = Merchant.Item("Onsen day pass", 0.0005 ether);
+        ryokanItems[1] = Merchant.Item("Kaiseki dinner", 0.001 ether);
+        ryokanItems[2] = Merchant.Item("Room with Fuji view", 0.003 ether);
+        Merchant ryokan = new Merchant("Kawaguchiko ryokan", ryokanItems);
         vm.stopBroadcast();
 
         console2.log("MissionFactory", address(missionFactory));
         console2.log("ReusableWalletFactory", address(reusableFactory));
         console2.log("ApprovalHook", address(approvalHook));
-        console2.log("Cafe", address(cafe));
-        console2.log("TicketOffice", address(ticketOffice));
-        console2.log("TipJar", address(tipJar));
+        console2.log("TeamLab", address(teamLab));
+        console2.log("RailOffice", address(rail));
+        console2.log("Ryokan", address(ryokan));
     }
 }
