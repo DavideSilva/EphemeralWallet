@@ -14,7 +14,7 @@ describe("store", () => {
 
   it("resolves holds exactly once", () => {
     const store = createStore();
-    const hold = store.addHold({ decisionId: "d", url: "u", walletKey: "default", payTo: PAYEE, amount: "300000", reasons: [] });
+    const hold = store.addHold({ decisionId: "d", url: "u", walletKey: "default", wallet: "0x1111111111111111111111111111111111111111", permissionId: "0", payTo: PAYEE, amount: "300000", reasons: [] });
     expect(store.listHolds()[0].status).toBe("pending");
     store.resolveHold(hold.id, "approved");
     expect(store.getHold(hold.id)?.status).toBe("approved");
@@ -33,7 +33,7 @@ describe("store", () => {
 
   it("reopens an approved hold whose payment attempt crashed", () => {
     const store = createStore();
-    const hold = store.addHold({ decisionId: "d", url: "u", walletKey: "default", payTo: PAYEE, amount: "300000", reasons: [] });
+    const hold = store.addHold({ decisionId: "d", url: "u", walletKey: "default", wallet: "0x1111111111111111111111111111111111111111", permissionId: "0", payTo: PAYEE, amount: "300000", reasons: [] });
     expect(() => store.reopenHold(hold.id)).toThrow(/not approved/);
     store.resolveHold(hold.id, "approved");
     store.reopenHold(hold.id);

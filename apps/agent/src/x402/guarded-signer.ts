@@ -4,6 +4,19 @@ import type { Screener } from "./screen";
 
 export type Authorization = { from: Address; to: Address; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex };
 export type Approval = { payTo: Address; amount: bigint };
+/**
+ * What the wallet's approval plugin will demand for this payment: nothing, or the owner's on-chain (Touch ID)
+ * approval of this payee and amount, which may already be in place.
+ */
+export type OwnerApproval = { required: false } | { required: true; approved: boolean; reason: "new_payee" | "over_threshold" };
+
+/** Thrown when the owner said yes in the app but the wallet has no matching Touch ID approval on-chain. */
+export class NeedsTouchId extends Error {
+  constructor() {
+    super("needs your Touch ID: approve this payment with your passkey in the app first");
+    this.name = "NeedsTouchId";
+  }
+}
 
 export class PaymentBlocked extends Error {
   constructor(readonly verdict: Verdict) {
@@ -21,6 +34,8 @@ export type GuardDeps = {
   approve: (auth: Authorization) => Promise<Hex>;
   paidBefore: (payTo: Address) => boolean;
   approvedFor?: Approval;
+  /** Reads the wallet's approval plugin, when the permission has one. */
+  ownerApproval?: (auth: Authorization) => Promise<OwnerApproval>;
   onVerdict: (event: { verdict: Verdict; auth: Authorization; screening: ScreeningResult; approveTx?: Hex }) => void;
   now?: () => bigint;
 };
@@ -86,6 +101,22 @@ export function createGuardedSigner(deps: GuardDeps) {
       if (verdict.kind === "REFUSE" || verdict.kind === "HOLD") {
         deps.onVerdict({ verdict, auth, screening });
         throw new PaymentBlocked(verdict);
+      }
+      // The wallet itself refuses some payments without the owner's Touch ID (new payee, or over its threshold).
+      // Hold them here rather than send a transaction the wallet would reject.
+      const onChain = deps.ownerApproval ? await deps.ownerApproval(auth) : { required: false as const };
+      if (onChain.required && !onChain.approved) {
+        if (humanApproved) throw new NeedsTouchId();
+        const held: Verdict = {
+          kind: "HOLD",
+          reasons: [
+            onChain.reason === "new_payee"
+              ? { source: "owner", code: "touch_id_new_payee", detail: "First payment to this payee: the wallet needs your Touch ID" }
+              : { source: "owner", code: "touch_id_over_threshold", detail: "Over the wallet's Touch ID threshold: it needs your approval" }
+          ]
+        };
+        deps.onVerdict({ verdict: held, auth, screening });
+        throw new PaymentBlocked(held);
       }
       const approveTx = await deps.approve(auth);
       deps.onVerdict({ verdict, auth, screening, approveTx });

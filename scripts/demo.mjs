@@ -10,6 +10,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 //   npm run demo                   start chain, service, agent daemon and UI
 //   npm run demo -- --scenarios    also run the scripted four-scenario x402 demo
 //   npm run demo -- --no-touch-id  don't wait for a passkey; the payment wallet is created unprotected
+//   npm run demo -- --rogue        also show a hacked agent being refused by the wallet (no Intercepta key needed)
 
 // Load .env before reading any config from it. A missing file is fine; anything else
 // (such as Node < 20.12 without process.loadEnvFile) must not silently drop the key.
@@ -253,6 +254,9 @@ try {
   console.log("Risky payee:   ", riskyPayTo);
   console.log("UI:             http://localhost:5173 (cards), http://localhost:5173/payments (x402)\n");
 
+  if (process.argv.includes("--rogue")) {
+    spawnSync("npm", ["--workspace", "@eaw/agent", "run", "x402:rogue"], { stdio: "inherit", env });
+  }
   if (process.argv.includes("--scenarios")) {
     spawnSync("npm", ["--workspace", "@eaw/agent", "run", "x402:demo"], { stdio: "inherit", env });
   }

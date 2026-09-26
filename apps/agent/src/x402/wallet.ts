@@ -1,10 +1,11 @@
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import type { PermissionState } from "@eaw/risk";
-import { erc20Abi, reusableWalletAbi } from "../../../../packages/shared/src/abi";
+import { approvalHookAbi, erc20Abi, reusableWalletAbi } from "../../../../packages/shared/src/abi";
+import { decodeRevert } from "../../../../packages/shared/src/revert";
 import type { WalletRef } from "./config";
-import type { Authorization } from "./guarded-signer";
+import { NeedsTouchId, type Authorization, type OwnerApproval } from "./guarded-signer";
 
 export function createWalletGateway(rpcUrl: string, agentKey: Hex, ref: WalletRef) {
   const transport = http(rpcUrl);
@@ -36,13 +37,48 @@ export function createWalletGateway(rpcUrl: string, agentKey: Hex, ref: WalletRe
         revoked
       };
     },
-    /** Contract re-checks agent, budget, uses, expiry; reverts are surfaced as errors. */
+    /** The approval plugin on this permission, if any (the first hook that answers needsApproval). */
+    async ownerApproval(auth: Authorization): Promise<OwnerApproval> {
+      const hooks = await publicClient.readContract({ address: ref.wallet, abi: reusableWalletAbi, functionName: "hooksOf", args: [ref.permissionId] });
+      for (const { hook } of hooks) {
+        const read = <F extends "needsApproval" | "knownPayee">(functionName: F, args: readonly unknown[]) =>
+          publicClient.readContract({ address: hook, abi: approvalHookAbi, functionName, args } as never) as Promise<boolean>;
+        let required: boolean;
+        try {
+          required = await read("needsApproval", [ref.wallet, ref.permissionId, auth.to, auth.value]);
+        } catch {
+          continue; // not an approval plugin
+        }
+        if (!required) return { required: false };
+        const key = await publicClient.readContract({
+          address: hook, abi: approvalHookAbi, functionName: "requestKey", args: [ref.wallet, ref.permissionId, auth.to, auth.value, "0x"]
+        });
+        const [until, block, known] = await Promise.all([
+          publicClient.readContract({ address: hook, abi: approvalHookAbi, functionName: "approvedUntil", args: [key] }),
+          publicClient.getBlock(),
+          read("knownPayee", [ref.wallet, ref.permissionId, auth.to])
+        ]);
+        return { required: true, approved: until >= block.timestamp, reason: known ? "over_threshold" : "new_payee" };
+      }
+      return { required: false };
+    },
+    /** Contract re-checks agent, budget, uses, expiry and plugins; reverts are surfaced as errors. */
     async approve(auth: Authorization): Promise<Hex> {
+      const args = [ref.permissionId, auth.to, auth.value, auth.validAfter, auth.validBefore, auth.nonce] as const;
+      // Simulate first so a plugin's refusal comes back as a readable reason, not a bare reverted transaction.
+      try {
+        await publicClient.simulateContract({ account: walletClient.account, address: ref.wallet, abi: reusableWalletAbi, functionName: "approvePayment", args });
+      } catch (error) {
+        const reverted = error instanceof BaseError ? error.walk(e => e instanceof ContractFunctionRevertedError) : undefined;
+        const data = reverted instanceof ContractFunctionRevertedError ? reverted.raw : undefined;
+        if (decodeRevert(data)?.name === "ApprovalRequired") throw new NeedsTouchId();
+        throw error;
+      }
       const hash = await walletClient.writeContract({
         address: ref.wallet,
         abi: reusableWalletAbi,
         functionName: "approvePayment",
-        args: [ref.permissionId, auth.to, auth.value, auth.validAfter, auth.validBefore, auth.nonce]
+        args
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") throw new Error(`approvePayment reverted: ${hash}`);

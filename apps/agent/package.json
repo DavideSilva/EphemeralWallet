@@ -8,6 +8,7 @@
     "daemon": "tsx src/x402/daemon.ts",
     "x402:setup": "tsx src/x402/setup.ts",
     "x402:demo": "tsx src/x402/demo.ts",
+    "x402:rogue": "tsx src/x402/rogue.ts",
     "test": "vitest run"
   },
   "dependencies": {
