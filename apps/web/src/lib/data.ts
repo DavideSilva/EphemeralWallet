@@ -36,6 +36,10 @@ export type Card = {
   status: CardStatus;
   /** Purchases above this need the owner's approval (the approval plugin is attached). */
   approvalThreshold?: bigint;
+  /** Who approves: the owner's passkey (Touch ID), or the owner's account. */
+  approvalBy?: "passkey" | "owner";
+  /** For passkey cards: the passkey's public key (x ‖ y), to check this browser holds the matching passkey. */
+  approvalPublicKey?: Hex;
 };
 
 export type ActivityKind = "issued" | "purchase" | "blocked" | "approved" | "cancelled" | "refund";
@@ -333,12 +337,18 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
   });
 
   const hook = approvalHook();
-  const thresholds = new Map<bigint, bigint>();
+  const thresholds = new Map<bigint, { threshold: bigint; by: "passkey" | "owner"; publicKey?: Hex }>();
   if (hook) {
     for (const e of accountEvents) {
       if (e.eventName !== "HookAttached" || e.args.hook!.toLowerCase() !== hook.toLowerCase()) continue;
       const [threshold] = decodeAbiParameters([{ type: "uint256" }], slice(e.args.config!, 0, 32));
-      thresholds.set(e.args.permissionId!, threshold);
+      // A passkey config also carries the key and RP ID hash: 4 words instead of 1.
+      const passkey = e.args.config!.length > 66;
+      thresholds.set(e.args.permissionId!, {
+        threshold,
+        by: passkey ? "passkey" : "owner",
+        publicKey: passkey ? slice(e.args.config!, 32, 96) : undefined,
+      });
     }
   }
 
@@ -363,7 +373,9 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
         issuedAt: log ? at(log.blockNumber) : 0,
         cancelled: revoked,
         balance: 0n,
-        approvalThreshold: thresholds.get(BigInt(i)),
+        approvalThreshold: thresholds.get(BigInt(i))?.threshold,
+        approvalBy: thresholds.get(BigInt(i))?.by,
+        approvalPublicKey: thresholds.get(BigInt(i))?.publicKey,
       };
       cards.push({ ...base, status: status(base, now) });
       targetOf.set(id, allowedTarget);
