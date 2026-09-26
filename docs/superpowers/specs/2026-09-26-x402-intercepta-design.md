@@ -60,7 +60,7 @@ apps/service  (x402 paid API + own facilitator)        apps/web (Vite UI)
 
 | Unit | Responsibility | Depends on |
 |---|---|---|
-| `packages/risk/src/intercepta.ts` | Typed client: `quickScanAddress`, `deepScanAddress`, `summarizeAddress`, `scanToken`, `scanMessage`. 5 s timeout, no retries beyond one; throws `ScreeningUnavailable` on timeout / non-2xx / unparseable body. | `fetch`, `INTERCEPTA_API_KEY` |
+| `packages/risk/src/intercepta.ts` | Typed client: `quickScanAddress`, `deepScanAddress`, `summarizeAddress`, `scanToken`, `scanMessage`. 5 s timeout, no retries; throws `ScreeningUnavailable` on timeout / non-2xx / unparseable body. | `fetch`, `INTERCEPTA_API_KEY` |
 | `packages/risk/src/profile.ts` | `getProfile(address)` → `{ address, tier, reasons[], labels[], screenedAt }`. Aggregates quick + deep scan + summarize. In-memory cache, 5 min TTL. | `intercepta.ts` |
 | `packages/risk/src/policy.ts` | Pure function `decide(input) → Verdict`. No I/O. | types only |
 | `packages/contracts` | On-chain final gate: permission limits + digest approval + ERC-1271. | USDC |
@@ -173,7 +173,8 @@ State is in memory (hackathon scope).
   the reasons list inline; tx hash link to Base Sepolia explorer when settled.
 - **Held payments**: pending holds with reasons, Approve / Reject.
 - **Counterparties**: profile cards — tier, reasons, labels, screened-at.
-- Wallet setup switches to Base Sepolia + USDC permissions (asset field, "any payee" option).
+- Base Sepolia wallets and USDC permissions are created by a setup script (`x402:setup`); the existing
+  Anvil wallet flows in the UI stay as they are.
 
 ## Error handling
 
