@@ -82,7 +82,7 @@ function IssueCard() {
     const timer = setTimeout(() => setRevealed(true), 1100);
     return () => clearTimeout(timer);
   }, [confirming]);
-  const [budget, setBudget] = useState("0.005");
+  const [budget, setBudget] = useState("0.02");
   const [uses, setUses] = useState("3");
   const [duration, setDuration] = useState(durations[1].seconds);
   const [goal, setGoal] = useState("");
@@ -119,7 +119,7 @@ function IssueCard() {
   const approvalThreshold = canRequireApproval && requireApproval ? parseAmount(approvalOver) : undefined;
 
   const errors = {
-    budget: budgetWei === null ? "Enter a budget above 0, like 0.005" : undefined,
+    budget: budgetWei === null ? "Enter a budget above 0, like 0.02" : undefined,
     uses:
       kind === "multi-use" && !(Number.isInteger(maxUses) && maxUses >= 1 && maxUses <= 1000)
         ? "Enter a whole number from 1 to 1000"
@@ -229,7 +229,7 @@ function IssueCard() {
             value={isCustom ? "custom" : chosenMerchant}
             onValueChange={value => {
               const next = merchants?.find(m => m.address === value);
-              if (Boolean(next?.asset) !== Boolean(asset)) setBudget(next?.asset ? "0.05" : "0.005");
+              if (Boolean(next?.asset) !== Boolean(asset)) setBudget(next?.asset ? "0.05" : "0.02");
               setMerchant(value as Address | "custom");
             }}
             className="grid gap-3 sm:grid-cols-2"
