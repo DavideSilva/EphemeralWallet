@@ -392,6 +392,7 @@ export const reusableWalletAbi = [
     ],
   },
   { type: "error", name: "Reentered", inputs: [] },
+  { type: "error", name: "InsufficientFunds", inputs: [] },
 ] as const;
 
 export const merchantAbi = [

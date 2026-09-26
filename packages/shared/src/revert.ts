@@ -13,6 +13,7 @@ const reasons: Record<string, string> = {
   PermissionNotFound: "Card not found",
   InvalidTarget: "Merchant not allowed on this card",
   SpendLimitExceeded: "Over the card's budget",
+  InsufficientFunds: "Your account doesn't have enough ETH. Add funds from the home page",
   UnknownItem: "Item not in the merchant's catalog",
   InvalidQuantity: "Quantity must be at least 1",
   WrongPayment: "Payment didn't match the catalog price",

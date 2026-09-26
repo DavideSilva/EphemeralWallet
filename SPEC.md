@@ -50,6 +50,8 @@ Invariants:
 - only the permission's agent can use it
 - a native permission can call only its allowed target (`execute`); a token permission cannot `execute`
 - cumulative spend cannot exceed maxSpend
+- permissions can promise more than the wallet holds; a native purchase larger than the wallet's ETH balance reverts
+  `InsufficientFunds` (nothing is consumed)
 - uses cannot exceed maxUses
 - expired or revoked permissions cannot execute or approve payments
 - revoking one permission does not affect others
