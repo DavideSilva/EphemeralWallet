@@ -54,6 +54,7 @@ function ctx(): PayContext {
       interceptaKey: "k",
       port: 0,
       serviceUrl: "http://service.test",
+      weatherUrl: "http://weather.test",
       uiOrigin: "http://ui.test",
       wallets: { default: { wallet: WALLET, permissionId: 1n } }
     },

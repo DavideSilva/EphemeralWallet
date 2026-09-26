@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 const AGENT = import.meta.env.VITE_AGENT_URL ?? "http://localhost:4100";
 const SERVICE = import.meta.env.VITE_SERVICE_URL ?? "http://localhost:4021";
+const WEATHER = import.meta.env.VITE_WEATHER_URL ?? "http://localhost:4022";
 const EXPLORER = "https://sepolia.basescan.org/tx/";
 const CLEARED_KEY = "x402-feed-cleared-at";
 
@@ -54,6 +55,7 @@ const actions = [
   { title: "Buy from a flagged seller", detail: "0.01 USDC · /premium-dataset", body: { url: `${SERVICE}/premium-dataset` } },
   { title: "Make a large purchase", detail: "0.30 USDC · /bulk-dataset", body: { url: `${SERVICE}/bulk-dataset` } },
   { title: "Pay from a sanctioned wallet", detail: "0.01 USDC · /dataset, risky wallet", body: { url: `${SERVICE}/dataset`, wallet: "risky" } },
+  { title: "Buy a Mount Fuji weather report", detail: "0.01 USDC · another seller", body: { url: `${WEATHER}/weather/mount-fuji` } },
 ];
 
 function Stamp({ label, tone: t }: { label: string; tone: Tone }) {
@@ -207,7 +209,7 @@ export function PaymentsPanel() {
       )}
 
       <p className="mb-3 text-sm text-muted-foreground">Ask the agent to buy something. Each click is one purchase attempt.</p>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {actions.map(a => (
           <Button
             key={a.title}

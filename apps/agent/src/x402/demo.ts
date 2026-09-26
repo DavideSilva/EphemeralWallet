@@ -22,3 +22,4 @@ if (held.status === "held" && held.payTo && held.amount) {
   show("3b) owner approves", await payUrl(ctx, `${config.serviceUrl}/bulk-dataset`, "default", { payTo: held.payTo, amount: BigInt(held.amount) }));
 }
 if (config.wallets.risky) show("4) risky payer", await payUrl(ctx, `${config.serviceUrl}/dataset`, "risky"));
+show("5) Mount Fuji weather (second seller)", await payUrl(ctx, `${config.weatherUrl}/weather/mount-fuji`, "default"));

@@ -29,7 +29,7 @@ npm run demo
 2. installs `forge-std` if needed
 3. deploys `MissionFactory`, `ReusableWalletFactory` and three demo merchants (Café, Ticket office, Tip jar)
 4. creates fresh owner/agent/facilitator/payee keys, funds them, and creates the two x402 demo wallets
-5. starts the x402 service (port 4021) and the agent daemon (port 4100)
+5. starts the x402 service (port 4021), the Mount Fuji weather service (port 4022, a second x402 seller) and the agent daemon (port 4100)
 6. starts the UI at `http://localhost:5173` (cards) and `http://localhost:5173/payments` (x402)
 
 The UI signs as Anvil account #0 (no wallet popups) and issues cards to Anvil account #1 by default. Stop everything with Ctrl-C.
@@ -118,10 +118,10 @@ The quickest way to see it work. It's the same `npm run demo` as above, with `IN
 ```bash
 npm install
 npm run demo                  # fork, deploy, fund, start service + agent daemon + UI
-npm run demo -- --scenarios   # same, plus the scripted four-scenario demo
+npm run demo -- --scenarios   # same, plus the scripted payment scenarios (the last one buys a weather report)
 ```
 
-The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the demo contracts (the wallet factory plus the card contracts, so the card pages work too), creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the agent daemon and the UI at http://localhost:5173 (open http://localhost:5173/payments). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`. If they're unset, the launcher uses two addresses that Intercepta tiers BLOCKED for different reasons: the risky seller is `0x3930…2fed`, an Intercepta test address flagged as a known scammer that received funds from exploits and drainers; the risky wallet's owner is `0x098B…2f96`, the OFAC-sanctioned Ronin bridge exploiter. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
+The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the demo contracts (the wallet factory plus the card contracts, so the card pages work too), creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the weather service, the agent daemon and the UI at http://localhost:5173 (open http://localhost:5173/payments). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`. If they're unset, the launcher uses two addresses that Intercepta tiers BLOCKED for different reasons: the risky seller is `0x3930…2fed`, an Intercepta test address flagged as a known scammer that received funds from exploits and drainers; the risky wallet's owner is `0x098B…2f96`, the OFAC-sanctioned Ronin bridge exploiter. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
 
 The keys are fresh on every run because Intercepta rejects Anvil's well-known dev addresses with a 404 ("An Externally Owned Account with this address doesn't exist"). The fail-closed rule would otherwise refuse every payment.
 
@@ -211,14 +211,18 @@ If the web app crashes on start after pulling (for example a React version error
 
 ## Mount Fuji weather over x402
 
-A mock web service that sells a Mount Fuji weather report behind [x402](https://x402.org). Set `WEATHER_PAY_TO` in `.env` to the address that receives payments, then:
+A mock web service that sells a Mount Fuji weather report behind [x402](https://x402.org), for $0.01 in USDC on Base Sepolia. It's a second, independent seller for the agent.
+
+`npm run demo` starts it on the fork with a fresh payee and its own facilitator key (`WEATHER_FACILITATOR_PRIVATE_KEY`), so it settles in-process like the x402 service. The agent daemon may pay it (`WEATHER_URL`, default `http://localhost:4022`). Use **Buy a Mount Fuji weather report** on the Payments page, or scenario 5 of `--scenarios`. Before signing, the agent screens the weather payee, the token and the authorization with Intercepta, exactly as it does for the dataset service. The weather service itself doesn't screen payers.
+
+To run it on its own, set `WEATHER_PAY_TO` in `.env` to the address that receives payments, then:
 
 ```bash
 npm run weather
 curl -i http://localhost:4022/weather/mount-fuji   # 402 Payment Required
 ```
 
-It runs on the public testnet with no screening or wallet contracts: each report costs $0.01 in USDC on Base Sepolia, settled through the public facilitator at `https://x402.org/facilitator`. To make a paid request, use any x402 client (for example [`@x402/fetch`](https://www.npmjs.com/package/@x402/fetch)) with a wallet holding Base Sepolia USDC from the [Circle faucet](https://faucet.circle.com). The report is random mock data. `WEATHER_PORT` changes the port.
+Without `WEATHER_FACILITATOR_PRIVATE_KEY` it settles through the public facilitator at `https://x402.org/facilitator` on the public testnet. To make a paid request, use any x402 client (for example [`@x402/fetch`](https://www.npmjs.com/package/@x402/fetch)) with a wallet holding Base Sepolia USDC from the [Circle faucet](https://faucet.circle.com). The report is random mock data. `WEATHER_PORT` changes the port.
 
 ## Structure
 

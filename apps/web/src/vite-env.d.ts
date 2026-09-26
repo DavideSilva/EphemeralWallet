@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_MERCHANTS?: string;
   readonly VITE_AGENT_URL?: string;
   readonly VITE_SERVICE_URL?: string;
+  readonly VITE_WEATHER_URL?: string;
   readonly VITE_CHAIN_ID?: string;
   readonly VITE_FROM_BLOCK?: string;
 }
