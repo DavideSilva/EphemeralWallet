@@ -22,11 +22,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { approvalChallenge, approvalExpiry, approvePurchase, approveWithPasskey, cancelCard, reclaimCard } from "@/lib/actions";
+import { approvalChallenge, approvePurchase, approveWithPasskey, cancelCard, reclaimCard } from "@/lib/actions";
 import { describePurchase, type Activity, type Card, type Held, type Snapshot } from "@/lib/data";
 import { agentCommand, eth, shortAddress, time, validity } from "@/lib/format";
 import { savedGoal, saveGoal } from "@/lib/goals";
 import { useMerchant, useMerchants } from "@/lib/hooks";
+import { storedPasskey } from "@/lib/passkey";
 import { savedScreening, type ScreeningStatus } from "@/lib/screening";
 
 export const Route = createFileRoute("/cards/$cardId")({ component: CardPage });
@@ -163,28 +164,32 @@ function ApprovalRequests({ card, activity }: { card: Card; activity: Activity[]
   return (
     <div className="space-y-3">
       {pending.map(held => (
-        <ApprovalRequest key={held.requestKey} held={held} passkey={card.approvalBy === "passkey"} />
+        <ApprovalRequest key={held.requestKey} held={held} card={card} />
       ))}
     </div>
   );
 }
 
-function ApprovalRequest({ held, passkey }: { held: Held; passkey: boolean }) {
+function ApprovalRequest({ held, card }: { held: Held; card: Card }) {
   const queryClient = useQueryClient();
-  const [validUntil] = useState(approvalExpiry);
-  // Read ahead so the click goes straight to Touch ID (Safari only allows the prompt right after a click).
+  const passkey = card.approvalBy === "passkey";
+  const stored = passkey ? storedPasskey() : null;
+  const wrongPasskey = passkey && stored?.publicKey.toLowerCase() !== card.approvalPublicKey?.toLowerCase();
+  // Read ahead so the click goes straight to Touch ID (Safari only allows the prompt right after a click), and
+  // refreshed every few minutes so the signed expiry never goes stale while the page stays open.
   const challenge = useQuery({
-    queryKey: ["approval-challenge", held.requestKey, validUntil.toString()],
-    queryFn: () => approvalChallenge(held, validUntil),
-    enabled: passkey,
-    staleTime: Infinity,
+    queryKey: ["approval-challenge", held.requestKey],
+    queryFn: () => approvalChallenge(held),
+    enabled: passkey && !wrongPasskey,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
   const { data: merchants } = useMerchants();
   const merchant = merchants?.find(m => m.address.toLowerCase() === held.target.toLowerCase());
   // Decoded from the calldata the agent sent, never from its memo, so the owner approves what will actually run.
   const purchase = merchants ? describePurchase(merchants, held.target, held.data) : undefined;
   const approve = useMutation({
-    mutationFn: () => (passkey ? approveWithPasskey(held, validUntil, challenge.data!) : approvePurchase(held)),
+    mutationFn: () => (passkey ? approveWithPasskey(held, challenge.data!) : approvePurchase(held)),
     onSuccess: () => {
       toast.success("Approved. The agent will retry now.");
       return queryClient.invalidateQueries({ queryKey: ["snapshot"] });
@@ -201,10 +206,19 @@ function ApprovalRequest({ held, passkey }: { held: Held; passkey: boolean }) {
         <span className="font-medium">{eth(held.value)} ETH</span> at {merchant?.name ?? held.target}?
       </p>
       <p className="mt-1 text-xs text-muted-foreground">This approves only this exact purchase, once, for the next hour.</p>
+      {wrongPasskey && (
+        <p className="mt-2 text-sm text-void">
+          This card was issued with a passkey this browser doesn't have (another browser, or you chose a new passkey).
+          Approve from the browser you issued it in.
+        </p>
+      )}
+      {challenge.error && (
+        <p className="mt-2 text-sm text-void">Couldn't prepare the approval: {challenge.error.message.split("\n")[0]}</p>
+      )}
       <Button
         className="mt-3"
         onClick={() => approve.mutate()}
-        disabled={approve.isPending || (passkey && !challenge.data)}
+        disabled={approve.isPending || (passkey && (wrongPasskey || !challenge.data))}
       >
         {approve.isPending ? "Approving…" : passkey ? "Approve with Touch ID" : "Approve purchase"}
       </Button>

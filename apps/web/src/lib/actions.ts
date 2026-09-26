@@ -134,26 +134,30 @@ export async function topUp(account: Address, amount: bigint) {
   await confirm(await sendTransaction(wagmiConfig, { to: account, value: amount }));
 }
 
-/** An approval lasts an hour from now: long enough for the waiting agent to retry. */
-export function approvalExpiry(): bigint {
-  return BigInt(Math.floor(Date.now() / 1000) + 60 * 60);
-}
-
-/** The passkey challenge for a held purchase, read ahead of the click so Touch ID opens straight away. */
-export async function approvalChallenge(held: Held, validUntil: bigint) {
-  return publicClient.readContract({
+/**
+ * The passkey challenge for a held purchase, with the expiry it signs (an hour from the later of wall clock and chain
+ * time). Read ahead of the click so Touch ID opens straight away; the caller refreshes it well within the hour.
+ */
+export async function approvalChallenge(held: Held) {
+  const block = await publicClient.getBlock();
+  const validUntil = BigInt(Math.max(Math.floor(Date.now() / 1000), Number(block.timestamp)) + 60 * 60);
+  const challenge = await publicClient.readContract({
     address: held.hook,
     abi: approvalHookAbi,
     functionName: "challenge",
     args: [held.wallet, held.permissionId, held.target, held.value, held.data, validUntil],
   });
+  return { validUntil, challenge };
 }
 
 /**
  * Touch ID signs this exact purchase, and the signature is recorded on-chain. The owner account only relays it:
  * the plugin checks the passkey signature, so the account alone couldn't approve.
  */
-export async function approveWithPasskey(held: Held, validUntil: bigint, challenge: `0x${string}`) {
+export async function approveWithPasskey(
+  held: Held,
+  { validUntil, challenge }: { validUntil: bigint; challenge: `0x${string}` },
+) {
   const passkey = storedPasskey();
   if (!passkey) throw new Error("This browser doesn't have the passkey this card was issued with.");
   const auth = await signWithPasskey(passkey, challenge);

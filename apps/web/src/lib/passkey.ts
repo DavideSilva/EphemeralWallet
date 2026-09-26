@@ -7,7 +7,10 @@ export type OwnerPasskey = { id: string; publicKey: Hex };
 const STORAGE_KEY = "eaw:owner-passkey";
 
 export function passkeysSupported(): boolean {
-  return typeof window !== "undefined" && "PublicKeyCredential" in window && window.isSecureContext;
+  if (typeof window === "undefined" || !("PublicKeyCredential" in window) || !window.isSecureContext) return false;
+  // Passkeys are bound to a domain; an IP address such as 127.0.0.1 can't be one.
+  const host = window.location.hostname;
+  return !/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && !host.startsWith("[");
 }
 
 export function storedPasskey(): OwnerPasskey | null {
@@ -49,7 +52,8 @@ export async function ownerPasskey(): Promise<OwnerPasskey> {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(passkey));
   } catch {
-    // Without storage the passkey still works for this card, but the next card will ask to create another.
+    // Without the credential id this browser could never sign an approval, so the card would stay blocked.
+    throw new Error("Couldn't save the passkey in this browser (storage is blocked). Untick Touch ID or allow site data.");
   }
   return passkey;
 }
