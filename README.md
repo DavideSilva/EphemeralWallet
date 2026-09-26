@@ -10,7 +10,7 @@ On top of that, agents can **pay each other over x402** in USDC from a reusable 
 
 ## Run the demo locally
 
-Requirements: Node.js/npm and Foundry (`anvil` + `forge`).
+Requirements: Node.js/npm and Foundry 1.6 or newer (`anvil` + `forge`; the demo chain runs the `osaka` hardfork for the P-256 precompile).
 
 ```bash
 git clone https://github.com/DavideSilva/EphemeralWallet.git
@@ -59,6 +59,31 @@ npm run agent -- <card> "buy two cinema tickets for tonight"
 Planning uses Claude (`claude-opus-5`) when Anthropic credentials are available, for example `ANTHROPIC_API_KEY` in a root `.env` (see `.env.example`). Otherwise, or with `AGENT_PLANNER=offline`, it matches the task against the catalog by keyword.
 
 The agent isn't told its limits and sends over-limit orders anyway, so the card is the one that says no. Rejected attempts are mined as reverts and show up in the app's activity as **Blocked**, with the reason.
+
+### Touch ID for big purchases
+
+A multi-use card can carry plugins that run before every purchase (see `SPEC.md`, "Mode B — plugins"). The first one,
+`ApprovalHook`, holds any single purchase above a threshold until you approve that exact purchase:
+
+1. Open the app at `http://localhost:5173` (not `127.0.0.1`: passkeys don't work on IP addresses).
+2. Issue a multi-use card and tick **Ask for my approval before big purchases** (big means over `0.005` by default).
+   Leave **Approve with Touch ID** on, then **Review and issue** and issue the card (without `INTERCEPTA_API_KEY` the
+   merchant check is "unverified": tick the risk box and **Issue anyway**). The first time, the browser asks you to
+   create a passkey. The card shows "Touch ID over 0.005 ETH".
+3. `npm run agent -- <card> "buy one concert ticket"` goes through on its own.
+4. `npm run agent -- <card> "buy 3 concert tickets"` is **Held**. The agent waits (up to 5 minutes) and the card page
+   shows the purchase, decoded from the agent's order, with **Approve with Touch ID**.
+5. Touch the sensor. The signature is checked on-chain, the agent retries the same order, and it's **Bought**. Activity
+   reads *Held → You approved with Touch ID → Bought*.
+
+An approval covers that one purchase, once, for an hour. The app's own account can't approve a Touch ID card; only the
+passkey can. Untick **Approve with Touch ID** to have the owner account approve instead (no passkey needed). The
+threshold applies per purchase, so an order split into small ones isn't held; the card's budget and uses still cap it.
+
+The passkey is kept in your browser's keychain, and its id and public key in this browser's local storage, so approve
+in the browser you issued the card from. **Use a new passkey** on the issue form starts over; cards issued with the old
+passkey then say so on their page instead of asking for Touch ID. If nobody approves while the agent waits (5 minutes),
+the purchase shows as "not approved while the agent waited" and the Approve button goes away: run the agent again.
 
 ## Safe agent-to-agent payments (x402 + Intercepta)
 
@@ -194,7 +219,7 @@ It runs on the public testnet with no screening or wallet contracts: each report
 ## Structure
 
 - `SPEC.md`: source of truth for contract behavior
-- `packages/contracts`: wallets, factories, demo merchants, tests and deployment scripts (`Deploy.s.sol`, `DeployX402.s.sol`)
+- `packages/contracts`: wallets, factories, the plugin interface and `ApprovalHook`, demo merchants, tests and deployment scripts (`Deploy.s.sol`, `DeployX402.s.sol`)
 - `packages/shared`: ABIs and revert decoding shared by the app and the agent
 - `packages/risk`: Intercepta API client, wallet/counterparty profiling, PAY/CAP/HOLD/REFUSE policy (`@eaw/risk`)
 - `apps/agent`: agent CLI with the Claude and offline planners; also the x402 pay loop, hold queue and daemon API (`src/x402/`)
