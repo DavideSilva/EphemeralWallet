@@ -69,7 +69,7 @@ function IssueCard() {
   const { data: merchants, error: merchantsError } = useMerchants();
   const { data: snapshot } = useSnapshot();
 
-  const [kind, setKind] = useState<CardKind>("one-time");
+  const [pickedKind, setKind] = useState<CardKind>("one-time");
   const [merchant, setMerchant] = useState<Address | "custom" | "">("");
   const [customMerchant, setCustomMerchant] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -101,6 +101,9 @@ function IssueCard() {
   const merchantName = chosen?.name;
   // An x402 seller: the card pays it in USDC over HTTP, so it's multi-use and budgeted in USDC.
   const asset = chosen?.asset;
+  // Derived, not only set on the merchant click: typing a seller's address as a custom merchant must not leave a
+  // one-time (ETH) card paying an x402 seller.
+  const kind: CardKind = asset ? "multi-use" : pickedKind;
   const screening = useScreening(merchantReady ? chosenMerchant : undefined);
   const { data: hasShop } = useQuery({
     queryKey: ["has-shop", chosenMerchant.toLowerCase()],
@@ -222,7 +225,6 @@ function IssueCard() {
             onValueChange={value => {
               const next = merchants?.find(m => m.address === value);
               if (Boolean(next?.asset) !== Boolean(asset)) setBudget(next?.asset ? "0.05" : "0.005");
-              if (next?.asset) setKind("multi-use");
               setMerchant(value as Address | "custom");
             }}
             className="grid gap-3 sm:grid-cols-2"

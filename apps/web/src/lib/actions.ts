@@ -156,6 +156,13 @@ export async function topUp(account: Address, amount: bigint) {
   await confirm(await sendTransaction(wagmiConfig, { to: account, value: amount }));
 }
 
+/** Moves a token (USDC) from the account back to the owner: what's left of cancelled, expired or used-up cards. */
+export async function withdrawToken(account: Address, asset: Address, amount: bigint) {
+  await confirm(
+    await writeContract(wagmiConfig, { address: account, abi: reusableWalletAbi, functionName: "withdrawToken", args: [asset, amount] }),
+  );
+}
+
 /**
  * The passkey challenge for a held purchase, with the expiry it signs (an hour from the later of wall clock and chain
  * time). Read ahead of the click so Touch ID opens straight away; the caller refreshes it well within the hour.
