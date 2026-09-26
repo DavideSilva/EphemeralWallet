@@ -17,6 +17,7 @@ Fields:
 - maxSpend
 - expiresAt
 - used
+- cancelled
 
 Invariants:
 - only the configured agent may execute
@@ -25,6 +26,7 @@ Invariants:
 - value cannot exceed the mission budget
 - execution stops after expiry
 - owner can reclaim leftovers after execution or expiry
+- owner can cancel an unused mission, which voids it and refunds the balance
 
 Best for: maximum isolation between jobs.
 
@@ -53,6 +55,11 @@ Invariants:
 - the owner can withdraw funds without destroying the wallet
 
 Best for: agents that perform repeated jobs from a shared wallet.
+
+## Shared behavior
+
+- every execution carries a `memo` (the agent's goal), emitted in `Executed`
+- demo targets are `Merchant` contracts exposing an on-chain catalog (`items()`) and `buy(itemId, quantity)` at exact catalog price
 
 ## Demo story
 

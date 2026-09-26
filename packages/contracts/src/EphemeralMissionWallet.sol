@@ -9,6 +9,7 @@ contract EphemeralMissionWallet {
     error InvalidTarget();
     error SpendLimitExceeded();
     error MissionStillActive();
+    error MissionCancelled();
     error TransferFailed();
     error CallFailed(bytes data);
 
@@ -19,9 +20,11 @@ contract EphemeralMissionWallet {
     uint64 public immutable expiresAt;
 
     bool public used;
+    bool public cancelled;
 
-    event Executed(address indexed agent, address indexed target, uint256 value, bytes data);
+    event Executed(address indexed agent, address indexed target, uint256 value, bytes data, string memo);
     event Reclaimed(address indexed owner, uint256 amount);
+    event Cancelled(address indexed owner, uint256 refunded);
 
     constructor(
         address owner_,
@@ -39,11 +42,12 @@ contract EphemeralMissionWallet {
 
     receive() external payable {}
 
-    function execute(address target, uint256 value, bytes calldata data)
+    function execute(address target, uint256 value, bytes calldata data, string calldata memo)
         external
         returns (bytes memory result)
     {
         if (msg.sender != agent) revert NotAgent();
+        if (cancelled) revert MissionCancelled();
         if (used) revert MissionAlreadyUsed();
         if (block.timestamp > expiresAt) revert MissionExpired();
         if (target != allowedTarget) revert InvalidTarget();
@@ -55,18 +59,31 @@ contract EphemeralMissionWallet {
         (bool ok, bytes memory returnData) = target.call{value: value}(data);
         if (!ok) revert CallFailed(returnData);
 
-        emit Executed(msg.sender, target, value, data);
+        emit Executed(msg.sender, target, value, data, memo);
         return returnData;
     }
 
     function reclaim() external {
         if (msg.sender != owner) revert NotOwner();
-        if (!used && block.timestamp <= expiresAt) revert MissionStillActive();
+        if (!used && !cancelled && block.timestamp <= expiresAt) revert MissionStillActive();
 
         uint256 amount = address(this).balance;
         (bool ok,) = owner.call{value: amount}("");
         if (!ok) revert TransferFailed();
 
         emit Reclaimed(owner, amount);
+    }
+
+    function cancel() external {
+        if (msg.sender != owner) revert NotOwner();
+        if (used) revert MissionAlreadyUsed();
+        if (cancelled) revert MissionCancelled();
+
+        cancelled = true;
+        uint256 amount = address(this).balance;
+        (bool ok,) = owner.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+
+        emit Cancelled(owner, amount);
     }
 }

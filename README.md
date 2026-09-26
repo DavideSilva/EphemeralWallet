@@ -21,7 +21,7 @@ npm run demo
 
 1. starts Anvil on `127.0.0.1:8545`
 2. installs `forge-std` if needed
-3. deploys `MissionFactory` and `DemoShop`
+3. deploys `MissionFactory`, `ReusableWalletFactory` and three demo merchants (Cafe, Ticket office, Tip jar)
 4. injects their addresses into the Vite app
 5. starts the UI at `http://localhost:5173`
 
@@ -32,10 +32,10 @@ The default agent address in the UI is Anvil account #1. Create a mission with a
 Run that command in a second terminal:
 
 ```bash
-npm run agent -- <MISSION_WALLET>
+npm run agent -- <MISSION_WALLET> "buy a coffee"
 ```
 
-The agent reads the constraints from the mission wallet, constructs a purchase of `coffee` from the allowed `DemoShop`, validates the target/budget/expiry locally, and executes it through Anvil's unlocked agent account.
+The agent reads the constraints from the mission wallet, reads the allowed merchant's on-chain catalog, buys item `DEMO_ITEM` (default `0`), validates the target/budget/expiry locally, and executes it through Anvil's unlocked agent account. The goal is recorded on-chain as the `memo` of the `Executed` event.
 
 Running the same command a second time should fail because the authority has already been consumed.
 
@@ -46,7 +46,7 @@ Switch to **Reusable wallet** in the UI. Create and fund the wallet once, then a
 The UI prints:
 
 ```bash
-npm run permission-agent -- <REUSABLE_WALLET> <PERMISSION_ID>
+npm run permission-agent -- <REUSABLE_WALLET> <PERMISSION_ID> "<goal>"
 ```
 
 Run it multiple times up to the permission's max-use/max-spend limits. You can create additional permissions on the same wallet without affecting existing ones.
@@ -56,7 +56,7 @@ Stop `npm run demo` with Ctrl-C to stop both Vite and Anvil.
 ## Structure
 
 - `SPEC.md` — source of truth for MVP behavior
-- `packages/contracts` — mission wallet, factory, demo target, tests and deployment script
+- `packages/contracts` — mission wallet, reusable wallet, factories, demo merchants, tests and deployment script
 - `packages/shared` — shared TypeScript types
 - `apps/agent` — local agent executor
 - `apps/web` — mission creation UI
