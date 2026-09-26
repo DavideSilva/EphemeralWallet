@@ -12,6 +12,24 @@ if (!commandExists("anvil") || !commandExists("forge")) {
   process.exit(1);
 }
 
+async function rpcIsRunning() {
+  try {
+    const response = await fetch(rpc, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] })
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+if (await rpcIsRunning()) {
+  console.error("Port 8545 already has an RPC server running. Stop the old Anvil process, then run npm run demo again.");
+  process.exit(1);
+}
+
 console.log("Starting local Anvil chain...");
 const anvil = spawn("anvil", ["--silent"], { stdio: "inherit" });
 
@@ -62,18 +80,20 @@ try {
   } else {
     const output = deploy.stdout + deploy.stderr;
     const factory = output.match(/MissionFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
+    const reusableFactory = output.match(/ReusableWalletFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const shop = output.match(/DemoShop\s+(0x[a-fA-F0-9]{40})/)?.[1];
 
-    if (!factory || !shop) throw new Error("Could not read deployed contract addresses");
+    if (!factory || !reusableFactory || !shop) throw new Error("Could not read deployed contract addresses");
 
     console.log("\nLocal demo ready");
     console.log("MissionFactory:", factory);
+    console.log("ReusableWalletFactory:", reusableFactory);
     console.log("DemoShop:", shop);
     console.log("UI: http://localhost:5173\n");
 
     const web = spawn("npm", ["run", "web"], {
       stdio: "inherit",
-      env: { ...process.env, VITE_FACTORY: factory, VITE_DEMO_SHOP: shop }
+      env: { ...process.env, VITE_FACTORY: factory, VITE_REUSABLE_FACTORY: reusableFactory, VITE_DEMO_SHOP: shop }
     });
 
     const stop = () => { web.kill(); anvil.kill(); };

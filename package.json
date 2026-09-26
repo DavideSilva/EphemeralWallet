@@ -1,10 +1,14 @@
 {
   "name": "ephemeral-agent-wallet",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "demo": "node scripts/demo.mjs",
     "agent": "npm --workspace @eaw/agent run start",
-    "web": "npm --workspace @eaw/web run dev"
+    "web": "npm --workspace @eaw/web run dev",
+    "permission-agent": "npm --workspace @eaw/agent run permission --"
   }
 }
