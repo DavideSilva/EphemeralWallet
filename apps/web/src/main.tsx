@@ -16,7 +16,7 @@ const reusableFactoryAbi = [
 ] as const;
 
 const reusableAbi = [
-  {type:"function",name:"createPermission",stateMutability:"nonpayable",inputs:[{name:"agent",type:"address"},{name:"allowedTarget",type:"address"},{name:"maxSpend",type:"uint256"},{name:"expiresAt",type:"uint64"},{name:"maxUses",type:"uint32"}],outputs:[{name:"permissionId",type:"uint256"}]},
+  {type:"function",name:"createPermission",stateMutability:"nonpayable",inputs:[{name:"agent",type:"address"},{name:"allowedTarget",type:"address"},{name:"maxSpend",type:"uint256"},{name:"expiresAt",type:"uint64"},{name:"maxUses",type:"uint32"},{name:"asset",type:"address"}],outputs:[{name:"permissionId",type:"uint256"}]},
   {type:"event",name:"PermissionCreated",inputs:[{indexed:true,name:"permissionId",type:"uint256"},{indexed:true,name:"agent",type:"address"},{indexed:true,name:"allowedTarget",type:"address"},{indexed:false,name:"maxSpend",type:"uint256"},{indexed:false,name:"expiresAt",type:"uint64"},{indexed:false,name:"maxUses",type:"uint32"}]}
 ] as const;
 
@@ -80,7 +80,7 @@ function App() {
       if(!reusableWallet) throw new Error("Create the reusable wallet first");
       const {wallet,publicClient,account}=await clients();
       setStatus("Adding permission...");
-      const hash=await wallet.writeContract({account,address:reusableWallet as `0x${string}`,abi:reusableAbi,functionName:"createPermission",args:[agent as `0x${string}`,target as `0x${string}`,parseEther(budget),BigInt(Math.floor(Date.now()/1000)+600),Number(maxUses)]});
+      const hash=await wallet.writeContract({account,address:reusableWallet as `0x${string}`,abi:reusableAbi,functionName:"createPermission",args:[agent as `0x${string}`,target as `0x${string}`,parseEther(budget),BigInt(Math.floor(Date.now()/1000)+600),Number(maxUses),"0x0000000000000000000000000000000000000000"]});
       await publicClient.waitForTransactionReceipt({hash});
       const nextId=await publicClient.readContract({address:reusableWallet as `0x${string}`,abi:[...reusableAbi,{type:"function",name:"nextPermissionId",stateMutability:"view",inputs:[],outputs:[{type:"uint256"}]}] as const,functionName:"nextPermissionId"});
       const id=nextId-1n;

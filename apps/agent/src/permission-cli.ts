@@ -5,7 +5,7 @@ const reusableAbi = [
   {type:"function",name:"execute",stateMutability:"nonpayable",inputs:[{name:"permissionId",type:"uint256"},{name:"target",type:"address"},{name:"value",type:"uint256"},{name:"data",type:"bytes"}],outputs:[{type:"bytes"}]},
   {type:"function",name:"permissions",stateMutability:"view",inputs:[{name:"",type:"uint256"}],outputs:[
     {name:"agent",type:"address"},{name:"allowedTarget",type:"address"},{name:"maxSpend",type:"uint256"},{name:"spent",type:"uint256"},
-    {name:"expiresAt",type:"uint64"},{name:"maxUses",type:"uint32"},{name:"uses",type:"uint32"},{name:"revoked",type:"bool"}
+    {name:"expiresAt",type:"uint64"},{name:"maxUses",type:"uint32"},{name:"uses",type:"uint32"},{name:"revoked",type:"bool"},{name:"asset",type:"address"}
   ]}
 ] as const;
 const shopAbi=[{type:"function",name:"buy",stateMutability:"payable",inputs:[{name:"item",type:"bytes32"}],outputs:[]}] as const;
@@ -23,7 +23,7 @@ const permissionId=BigInt(rawPermissionId);
 const rpc=process.env.RPC_URL ?? "http://127.0.0.1:8545";
 const publicClient=createPublicClient({chain:foundry,transport:http(rpc)});
 const permission=await publicClient.readContract({address:wallet,abi:reusableAbi,functionName:"permissions",args:[permissionId]});
-const [agent,allowedTarget,maxSpend,spent,expiresAt,maxUses,uses,revoked]=permission;
+const [agent,allowedTarget,maxSpend,spent,expiresAt,maxUses,uses,revoked,asset]=permission;
 
 if(revoked) cannotExecute("Permission revoked");
 if(BigInt(Math.floor(Date.now()/1000)) > BigInt(expiresAt)) cannotExecute("Permission expired");
