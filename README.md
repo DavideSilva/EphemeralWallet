@@ -53,15 +53,88 @@ Run it multiple times up to the permission's max-use/max-spend limits. You can c
 
 Stop `npm run demo` with Ctrl-C to stop both Vite and Anvil.
 
+## Safe agent-to-agent payments (x402 + Intercepta)
+
+Agents pay x402 services in USDC on Base Sepolia from a `ReusablePermissionWallet`. Every payment is screened live by
+the [Intercepta API](https://intercepta.io) and the verdict — PAY, CAP, HOLD or REFUSE, with reasons — decides what happens.
+
+- **Paying agent:** before signing, screens `payTo`, the token (real USDC vs lookalike) and the EIP-3009 authorization,
+  then the wallet contract enforces budget/uses/expiry in `approvePayment` and accepts the signature via ERC-1271.
+- **Paid service:** an x402 server with its own facilitator screens the payer wallet, its owner and its agent before
+  verifying or settling.
+- **Counterparty risk:** every wallet on the other side gets a profile (TRUSTED / CAUTION / BLOCKED) with Intercepta's reasons.
+
+Payments run on Base Sepolia; screening uses the same addresses' **mainnet** history (Intercepta only covers mainnets).
+
+### Where the Intercepta API is called
+
+- [`packages/risk/src/intercepta.ts`](packages/risk/src/intercepta.ts) — the only HTTP client (quick scan, deep scan, summarize, token, message)
+- [`apps/agent/src/x402/screen.ts`](apps/agent/src/x402/screen.ts) + [`guarded-signer.ts`](apps/agent/src/x402/guarded-signer.ts) — payer gate, runs before `approvePayment`/signing
+- [`apps/service/src/payer-gate.ts`](apps/service/src/payer-gate.ts) — payee gate, runs before facilitator verify/settle
+- [`packages/risk/src/policy.ts`](packages/risk/src/policy.ts) — how results become PAY / CAP / HOLD / REFUSE
+
+### Run it
+
+Prerequisites (manual, one-time):
+
+- An Intercepta API key: free at [intercepta.io/ethglobal](https://intercepta.io/ethglobal)
+- Risky test addresses to use as `RISKY_PAYTO`/`RISKY_OWNER`: pinned in Intercepta's ETHGlobal Discord
+- Base Sepolia ETH on the owner, agent and facilitator keys (any Base Sepolia faucet)
+- ~1.2 USDC on the owner key: [faucet.circle.com](https://faucet.circle.com)
+
+Once you have an Intercepta key and a risky/clean address pair, sanity-check the API before wiring up the full demo:
+
+```bash
+npm --workspace @eaw/risk run smoke -- <riskyAddress> <cleanAddress>
+```
+
+See [`packages/risk/scripts/smoke.ts`](packages/risk/scripts/smoke.ts) — it's the first live call against Intercepta and prints the raw response shapes.
+
+With `.env` filled in (see `.env.example`):
+
+```bash
+cd packages/contracts && forge script script/DeployX402.s.sol:DeployX402 --rpc-url $RPC_URL --broadcast --private-key $OWNER_PRIVATE_KEY
+# put FACTORY_ADDRESS in .env, then:
+npm --workspace @eaw/agent run x402:setup      # put printed WALLET_ADDRESS / RISKY_WALLET_ADDRESS in .env
+npm --workspace @eaw/service start &            # terminal 1
+npm --workspace @eaw/agent run x402:demo
+```
+
+Expected output:
+
+1. `verdict: PAY status: settled` with a basescan link.
+2. `verdict: REFUSE status: refused` with Intercepta trait reasons (e.g. `sanction_address`).
+3. `verdict: HOLD status: held` (`above_hold_threshold`), then 3b `PAY … settled` with `owner_approved`.
+4. `verdict: PAY status: rejected_by_payee` with `payer_refused: owner 0x…: <trait descriptions>`.
+
+If 1 fails at the facilitator with a signature error, confirm the signature is 96 bytes and `verifyTypedData` is the viem *public* action (ERC-1271 capable).
+
+Then run the UI flow: `npm --workspace @eaw/agent run daemon`, `npm run web`, open the **x402 payments** tab, and repeat 1–4 with the buttons, approving the hold from the inbox.
+
+### Intercepta API feedback
+
+> TODO before submission: fill in 3–5 lines from the live run (time to first call, confusions, gaps).
+
+Observed so far (from the docs, pre-key):
+
+- Scan Message's `chainId` enum only lists mainnets, so testnet x402 authorizations must be rewritten to a mainnet domain for screening.
+- Scan Message's documented `messageType` enum has no `TransferWithAuthorization` (EIP-3009), the message x402 uses.
+- The numeric scale of trait `risk` in address scans is not documented.
+
 ## Structure
 
 - `SPEC.md` — source of truth for MVP behavior
 - `packages/contracts` — mission wallet, factory, demo target, tests and deployment script
 - `packages/shared` — shared TypeScript types
-- `apps/agent` — local agent executor
-- `apps/web` — mission creation UI
+- `packages/risk` — Intercepta API client, wallet/counterparty profiling, PAY/CAP/HOLD/REFUSE policy (`@eaw/risk`)
+- `apps/agent` — local agent executor; also the x402 pay loop, hold queue and daemon API (`src/x402/`)
+- `apps/service` — x402-paid API with an Intercepta payer gate in front of its facilitator
+- `apps/web` — mission creation UI, plus an x402 payments tab
 - `scripts/demo.mjs` — local demo orchestrator
 
 ## Current scope
 
-The MVP deliberately uses native ETH and a local Anvil chain. Both disposable-wallet and reusable-permission models are implemented. ERC-20 support, real DeFi targets, ERC-4337/session keys, and LLM planning come next.
+The MVP deliberately uses native ETH and a local Anvil chain for the disposable-wallet and reusable-permission models,
+both of which are implemented. On top of that, `apps/agent` and `apps/service` add a live x402 payment flow in USDC on
+Base Sepolia, screened end-to-end by Intercepta (see "Safe agent-to-agent payments" above). Real DeFi targets,
+ERC-4337/session keys, and LLM planning come next.
