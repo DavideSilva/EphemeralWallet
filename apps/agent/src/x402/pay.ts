@@ -12,6 +12,9 @@ import { createWalletGateway } from "./wallet";
 
 export type PayContext = { config: AgentConfig; client: InterceptaClient; profiler: Profiler; store: ReturnType<typeof createStore> };
 const NETWORK = "eip155:84532";
+const REQUEST_TIMEOUT_MS = 15_000;
+// The paid request waits for the facilitator to settle on-chain.
+const SETTLE_TIMEOUT_MS = 60_000;
 
 export async function payUrl(ctx: PayContext, url: string, walletKey: "default" | "risky", approvedFor?: Approval): Promise<Decision> {
   const ref = ctx.config.wallets[walletKey];
@@ -37,12 +40,15 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
       amount: seen.auth.value.toString(),
       verdict: { kind: seen.verdict.kind, reasons: seen.verdict.reasons, cap: seen.verdict.cap?.toString() },
       payee: seen.payee,
-      approveTx: seen.approveTx
+      approveTx: seen.approveTx,
+      validBefore: seen.approveTx ? seen.auth.validBefore.toString() : undefined
     };
+  // Once approvePayment has run, budget is spent and the authorization may still settle: never call that "failed".
+  const failed = (): "failed" | "unsettled" => (seen?.approveTx ? "unsettled" : "failed");
 
   // Total over network and header-decoding errors: every attempt ends as a recorded Decision.
   try {
-    const first = await fetch(url, { redirect: "manual" });
+    const first = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (first.status !== 402) return ctx.store.addDecision({ ...base, status: "failed", error: `expected 402, got ${first.status}` });
     const header = first.headers.get("PAYMENT-REQUIRED");
     if (!header) return ctx.store.addDecision({ ...base, status: "failed", error: "missing PAYMENT-REQUIRED header" });
@@ -72,7 +78,11 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
       return decision;
     }
 
-    const paid = await fetch(url, { headers: { "PAYMENT-SIGNATURE": encodePaymentSignatureHeader(payload) }, redirect: "manual" });
+    const paid = await fetch(url, {
+      headers: { "PAYMENT-SIGNATURE": encodePaymentSignatureHeader(payload) },
+      redirect: "manual",
+      signal: AbortSignal.timeout(SETTLE_TIMEOUT_MS)
+    });
     if (paid.status === 200) {
       const settlement = paid.headers.get("PAYMENT-RESPONSE");
       const settleTx = settlement ? decodePaymentResponseHeader(settlement).transaction : undefined;
@@ -84,10 +94,10 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
     return ctx.store.addDecision({
       ...base,
       ...detail(),
-      status: payerRefused ? "rejected_by_payee" : "failed",
+      status: payerRefused ? "rejected_by_payee" : failed(),
       error: reason ?? `HTTP ${paid.status}`
     });
   } catch (error) {
-    return ctx.store.addDecision({ ...base, ...detail(), status: "failed", error: error instanceof Error ? error.message : String(error) });
+    return ctx.store.addDecision({ ...base, ...detail(), status: failed(), error: error instanceof Error ? error.message : String(error) });
   }
 }

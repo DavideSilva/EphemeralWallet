@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Hex } from "viem";
 import { ScreeningUnavailable, type Address, type Profile } from "@eaw/risk";
-import { createPayerGate, readIdentitiesWith, type IdentityRpcClient, type PayerLogEntry } from "../src/payer-gate";
+import { createPayerGate, MAX_PAYER_LOG, readIdentitiesWith, type IdentityRpcClient, type PayerLogEntry } from "../src/payer-gate";
 
 const PAYER = "0x1111111111111111111111111111111111111111";
 const OWNER = "0x4444444444444444444444444444444444444444";
@@ -17,6 +17,7 @@ function gate(tiers: Record<string, Profile["tier"]>, log: PayerLogEntry[] = [])
   return createPayerGate({
     profiler: { getProfile: vi.fn(async (a: `0x${string}`) => profile(a, tiers[a] ?? "TRUSTED")) },
     readIdentities: async () => [{ role: "payer", address: PAYER }, { role: "owner", address: OWNER }],
+    preVerify: async () => ({ isValid: true }),
     log
   });
 }
@@ -38,9 +39,49 @@ describe("payer gate", () => {
     const g = createPayerGate({
       profiler: { getProfile: vi.fn(async () => { throw new ScreeningUnavailable("quick-scan", "HTTP 503"); }) },
       readIdentities: async () => [{ role: "payer", address: PAYER }],
+      preVerify: async () => ({ isValid: true }),
       log: []
     });
     expect(await g({ paymentPayload: payload, requirements: {} })).toMatchObject({ abort: true, reason: expect.stringMatching(/^payer_screening_unavailable/) });
+  });
+
+  it("rejects an invalid signature before any screening or identity read", async () => {
+    const getProfile = vi.fn();
+    const readIdentities = vi.fn();
+    const log: PayerLogEntry[] = [];
+    const g = createPayerGate({
+      profiler: { getProfile },
+      readIdentities,
+      preVerify: async () => ({ isValid: false, invalidReason: "invalid_exact_evm_payload_signature" }),
+      log
+    });
+    expect(await g({ paymentPayload: payload, requirements: {} })).toMatchObject({
+      abort: true, reason: "invalid_payment: invalid_exact_evm_payload_signature"
+    });
+    expect(readIdentities).not.toHaveBeenCalled();
+    expect(getProfile).not.toHaveBeenCalled();
+    expect(log).toHaveLength(0);
+  });
+
+  it("fails closed when reading the payer's identities fails", async () => {
+    const getProfile = vi.fn();
+    const log: PayerLogEntry[] = [];
+    const g = createPayerGate({
+      profiler: { getProfile },
+      readIdentities: async () => { throw new Error("rpc down"); },
+      preVerify: async () => ({ isValid: true }),
+      log
+    });
+    expect(await g({ paymentPayload: payload, requirements: {} })).toMatchObject({ abort: true, reason: "payer_screening_unavailable: rpc down" });
+    expect(getProfile).not.toHaveBeenCalled();
+    expect(log[0]).toMatchObject({ outcome: "refused" });
+  });
+
+  it("keeps only the newest log entries", async () => {
+    const log: PayerLogEntry[] = [];
+    const g = gate({}, log);
+    for (let i = 0; i < MAX_PAYER_LOG + 5; i++) await g({ paymentPayload: payload, requirements: {} });
+    expect(log).toHaveLength(MAX_PAYER_LOG);
   });
 
   it("refuses payloads without an EIP-3009 authorization", async () => {

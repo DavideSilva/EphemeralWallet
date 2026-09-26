@@ -21,8 +21,8 @@ async function createFunded(walletOwner: Hex, maxSpend: bigint, fund: bigint) {
     args: [walletOwner, agent, USDC_BASE_SEPOLIA, maxSpend, expiresAt, 20]
   });
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  const wallet = parseEventLogs({ abi: reusableWalletFactoryAbi, eventName: "WalletCreated", logs: receipt.logs })[0]?.args.wallet;
-  if (!wallet) throw new Error("WalletCreated not found");
+  const wallet = parseEventLogs({ abi: reusableWalletFactoryAbi, eventName: "WalletCreatedFor", logs: receipt.logs })[0]?.args.wallet;
+  if (!wallet) throw new Error("WalletCreatedFor not found");
   const fundHash = await walletClient.writeContract({ address: USDC_BASE_SEPOLIA, abi: erc20Abi, functionName: "transfer", args: [wallet, fund] });
   await publicClient.waitForTransactionReceipt({ hash: fundHash });
   return wallet;

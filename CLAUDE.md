@@ -37,6 +37,9 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 - Intercepta only knows mainnets: payments run on Base Sepolia (84532), screening uses chain `8453` and mainnet USDC.
 - Intercepta 404s Anvil's well-known dev addresses, so anything that gets screened (owner, agent, payee) must use a
   fresh key; `x402:local` generates them per run.
-- The agent daemon is localhost-only and hardened (single allowed UI origin, JSON-only writes, `/pay` limited to the
-  service origin, 64 KiB bodies). Keep it that way.
+- The agent daemon is localhost-only and hardened (loopback `Host` only, writes need JSON plus the UI's exact `Origin`,
+  `/pay` limited to the service origin, 64 KiB bodies). Handler lives in `apps/agent/src/x402/daemon-handler.ts` (tested);
+  `daemon.ts` only wires it up. Keep it that way.
+- The service's payer gate pre-verifies the payment signature before screening, so garbage payloads cost no
+  Intercepta quota. Keep the pre-verify first.
 - Never commit `.env` or print the Intercepta key.

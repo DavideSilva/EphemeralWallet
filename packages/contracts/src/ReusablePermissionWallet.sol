@@ -27,6 +27,7 @@ contract ReusablePermissionWallet {
     error NotNativePermission();
     error AuthorizationOutlivesPermission();
     error NonceAlreadyApproved();
+    error InvalidAuthorizationWindow();
 
     struct Permission {
         address agent;
@@ -134,7 +135,8 @@ contract ReusablePermissionWallet {
     }
 
     /// @notice Approves one exact EIP-3009 TransferWithAuthorization from this wallet.
-    /// Budget and uses are consumed here, before any signature exists.
+    /// Budget and uses are consumed here, before any signature exists, so the window must be
+    /// settleable now (EIP-3009 accepts only validAfter < block.timestamp < validBefore).
     function approvePayment(
         uint256 permissionId,
         address payTo,
@@ -145,7 +147,9 @@ contract ReusablePermissionWallet {
     ) external returns (bytes32 digest) {
         Permission storage permission = _consume(permissionId, amount);
         if (permission.asset == address(0)) revert NotTokenPermission();
+        if (payTo == address(0)) revert InvalidTarget();
         if (permission.allowedTarget != address(0) && payTo != permission.allowedTarget) revert InvalidTarget();
+        if (validAfter >= validBefore || validBefore <= block.timestamp) revert InvalidAuthorizationWindow();
         if (validBefore > permission.expiresAt) revert AuthorizationOutlivesPermission();
         if (approvedNonce[nonce] != 0) revert NonceAlreadyApproved();
 

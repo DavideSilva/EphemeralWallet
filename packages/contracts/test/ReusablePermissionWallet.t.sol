@@ -239,6 +239,56 @@ contract ReusablePermissionWalletTest is Test {
         vm.stopPrank();
     }
 
+    function testApprovePaymentRejectsUnsettleableWindowWithoutConsumingBudget() public {
+        uint256 id = createTokenPermission(address(0), 1e6, 5);
+        vm.warp(1000);
+        vm.startPrank(agentA);
+
+        vm.expectRevert(ReusablePermissionWallet.InvalidAuthorizationWindow.selector);
+        wallet.approvePayment(id, payee, 0.1e6, 0, block.timestamp, keccak256("expired"));
+
+        vm.expectRevert(ReusablePermissionWallet.InvalidAuthorizationWindow.selector);
+        wallet.approvePayment(id, payee, 0.1e6, 0, block.timestamp - 1, keccak256("past"));
+
+        vm.expectRevert(ReusablePermissionWallet.InvalidAuthorizationWindow.selector);
+        wallet.approvePayment(id, payee, 0.1e6, block.timestamp + 5 minutes, block.timestamp + 4 minutes, keccak256("inverted"));
+
+        vm.expectRevert(ReusablePermissionWallet.InvalidTarget.selector);
+        wallet.approvePayment(id, address(0), 0.1e6, 0, block.timestamp + 10 minutes, keccak256("zero"));
+        vm.stopPrank();
+
+        (, , , uint256 spent, , , uint32 uses, , ) = wallet.permissions(id);
+        assertEq(spent, 0);
+        assertEq(uses, 0);
+    }
+
+    function testNonceIsSingleUseAcrossTokenPermissions() public {
+        uint256 first = createTokenPermission(address(0), 1e6, 5);
+        uint256 second = createTokenPermission(address(0), 1e6, 5);
+        vm.startPrank(agentA);
+        wallet.approvePayment(first, payee, 0.1e6, 0, block.timestamp + 10 minutes, keccak256("shared"));
+        vm.expectRevert(ReusablePermissionWallet.NonceAlreadyApproved.selector);
+        wallet.approvePayment(second, payee, 0.1e6, 0, block.timestamp + 10 minutes, keccak256("shared"));
+        vm.stopPrank();
+    }
+
+    /// Documents the revoke window: revoking stops new approvals, but an authorization approved
+    /// before the revoke stays settleable until its validBefore (the agent caps that at 15 minutes).
+    function testApprovedDigestStillSettlesAfterRevoke() public {
+        uint256 id = createTokenPermission(address(0), 1e6, 5);
+        uint256 validBefore = block.timestamp + 10 minutes;
+        bytes32 nonce = keccak256("before-revoke");
+        vm.prank(agentA);
+        wallet.approvePayment(id, payee, 0.25e6, 0, validBefore, nonce);
+
+        vm.prank(owner);
+        wallet.revokePermission(id);
+
+        vm.prank(stranger);
+        token.transferWithAuthorization(address(wallet), payee, 0.25e6, 0, validBefore, nonce, walletSig(id, nonce));
+        assertEq(token.balanceOf(payee), 0.25e6);
+    }
+
     function testApprovePaymentRejectsNativePermissionAndExecuteRejectsTokenPermission() public {
         uint256 nativeId = createPermission(agentA, address(targetA), 1 ether, 1);
         vm.expectRevert(ReusablePermissionWallet.NotTokenPermission.selector);

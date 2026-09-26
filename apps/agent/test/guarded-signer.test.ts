@@ -15,11 +15,11 @@ const clean: ScreeningResult = {
   unavailable: []
 };
 
-const typedData = (value: bigint, from = WALLET, validBefore = 1_600n) => ({
+const typedData = (value: bigint, from = WALLET, validBefore = 1_600n, validAfter = 0n, nonce: string = NONCE) => ({
   domain: { name: "USDC", version: "2", chainId: 84532, verifyingContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" },
   types: {},
   primaryType: "TransferWithAuthorization",
-  message: { from, to: PAYEE, value, validAfter: 0n, validBefore, nonce: NONCE }
+  message: { from, to: PAYEE, value, validAfter, validBefore, nonce }
 });
 
 function deps(overrides: Partial<GuardDeps> = {}): GuardDeps {
@@ -91,5 +91,31 @@ describe("guarded signer", () => {
     const d = deps();
     await createGuardedSigner(d).signTypedData(typedData(10_000n, WALLET, 1_000n + 900n));
     expect(d.approve).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an expired validBefore", 1_000n, 0n, /already expired/],
+    ["a validBefore in the past", 999n, 0n, /already expired/],
+    ["validAfter after validBefore", 1_500n, 1_600n, /not yet valid/],
+    ["a validAfter in the future", 1_500n, 1_001n, /not yet valid/]
+  ])("refuses %s before screening or approving", async (_label, validBefore, validAfter, error) => {
+    const d = deps();
+    await expect(createGuardedSigner(d).signTypedData(typedData(10_000n, WALLET, validBefore, validAfter))).rejects.toThrow(error);
+    expect(d.screen).not.toHaveBeenCalled();
+    expect(d.approve).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed nonce before screening", async () => {
+    const d = deps();
+    await expect(createGuardedSigner(d).signTypedData(typedData(10_000n, WALLET, 1_600n, 0n, "0x1234"))).rejects.toThrow(/nonce/);
+    expect(d.screen).not.toHaveBeenCalled();
+  });
+
+  it("refuses without approving when screening is unavailable", async () => {
+    const d = deps({ screen: vi.fn(async () => ({ ...clean, unavailable: ["payee: timeout"] })) });
+    const err = await createGuardedSigner(d).signTypedData(typedData(10_000n)).catch(e => e);
+    expect(err).toBeInstanceOf(PaymentBlocked);
+    expect((err as PaymentBlocked).verdict.kind).toBe("REFUSE");
+    expect(d.approve).not.toHaveBeenCalled();
   });
 });

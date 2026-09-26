@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { Hex } from "viem";
 import type { Address, Profile, Reason, VerdictKind } from "@eaw/risk";
 
-export type DecisionStatus = "settled" | "refused" | "held" | "rejected_by_payee" | "failed" | "superseded";
+/**
+ * `unsettled`: approvePayment went through (budget and a use are spent on-chain) but settlement was
+ * not confirmed. The authorization can still settle until its validBefore (at most 15 minutes).
+ */
+export type DecisionStatus = "settled" | "refused" | "held" | "rejected_by_payee" | "failed" | "unsettled" | "superseded";
 export type Decision = {
   id: string;
   createdAt: string;
@@ -15,6 +19,8 @@ export type Decision = {
   payee?: Profile;
   status: DecisionStatus;
   approveTx?: Hex;
+  /** Unix seconds; set once the agent approved an authorization. */
+  validBefore?: string;
   settleTx?: string;
   error?: string;
   holdId?: string;

@@ -1,4 +1,4 @@
-import { encodeAbiParameters, getAddress, zeroHash, type Hex } from "viem";
+import { encodeAbiParameters, getAddress, isHex, size, zeroHash, type Hex } from "viem";
 import { decide, type Address, type PermissionState, type PolicyConfig, type ScreeningResult, type TypedDataPayload, type Verdict } from "@eaw/risk";
 import type { Screener } from "./screen";
 
@@ -35,6 +35,7 @@ export function encodeWalletSignature(permissionId: bigint, nonce: Hex): Hex {
 
 function parseAuthorization(typedData: TypedDataPayload): Authorization {
   const m = typedData.message as Record<string, unknown>;
+  if (!isHex(m.nonce) || size(m.nonce) !== 32) throw new Error("authorization nonce must be 32 bytes");
   return {
     from: getAddress(String(m.from)),
     to: getAddress(String(m.to)),
@@ -59,8 +60,13 @@ export function createGuardedSigner(deps: GuardDeps) {
       }
       const auth = parseAuthorization(typedData);
       if (auth.from !== getAddress(deps.wallet)) throw new Error("authorization is not from this wallet");
+      // approvePayment consumes budget up front, and USDC only settles while validAfter < now < validBefore:
+      // an expired or inverted window would burn budget for a transfer that can never happen.
+      const at = now();
+      if (auth.validBefore <= at) throw new Error("authorization already expired");
+      if (auth.validAfter > at) throw new Error("authorization not yet valid");
       // An approved-but-unsettled authorization outlives a revoke until validBefore: keep that window short.
-      if (auth.validBefore - now() > MAX_VALIDITY_SECONDS) throw new Error("authorization validity too long");
+      if (auth.validBefore - at > MAX_VALIDITY_SECONDS) throw new Error("authorization validity too long");
 
       const [screening, permission] = await Promise.all([deps.screen(typedData), deps.readPermission()]);
       const humanApproved =

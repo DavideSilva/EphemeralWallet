@@ -62,6 +62,20 @@ describe("createProfiler", () => {
     expect(client.quickScanAddress).toHaveBeenCalledTimes(2);
   });
 
+  it("evicts the oldest entry beyond maxEntries", async () => {
+    const client = fakeClient([]);
+    const profiler = createProfiler(client, { maxEntries: 2 });
+    const B = "0x00000000000000000000000000000000000000bb";
+    const C = "0x00000000000000000000000000000000000000cc";
+    await profiler.getProfile(A);
+    await profiler.getProfile(B);
+    await profiler.getProfile(C);
+    await profiler.getProfile(C);
+    expect(client.quickScanAddress).toHaveBeenCalledTimes(3);
+    await profiler.getProfile(A);
+    expect(client.quickScanAddress).toHaveBeenCalledTimes(4);
+  });
+
   it("propagates ScreeningUnavailable and does not cache failures", async () => {
     const client = fakeClient([]);
     (client.quickScanAddress as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new ScreeningUnavailable("quick-scan", "HTTP 500"));

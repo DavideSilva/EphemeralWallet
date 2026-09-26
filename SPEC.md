@@ -65,8 +65,9 @@ A permission with a non-zero `asset` lets the agent pay x402 services from the w
 
 - `allowedTarget` is the only payee, or `address(0)` for any payee (the agent's screening decides who).
 - `approvePayment(permissionId, payTo, amount, validAfter, validBefore, nonce)`: agent only. Applies every check above
-  (budget, uses, expiry, revoked) plus: token permission only, payee matches if pinned, `validBefore <= expiresAt`,
-  nonce not already approved. Spend and uses are consumed here, before any signature exists. The wallet computes the
+  (budget, uses, expiry, revoked) plus: token permission only, `payTo != address(0)`, payee matches if pinned, a
+  window that can settle now (`validAfter < validBefore` and `validBefore > block.timestamp`, else
+  `InvalidAuthorizationWindow`), `validBefore <= expiresAt`, and a nonce not already approved by any permission. Spend and uses are consumed here, before any signature exists. The wallet computes the
   exact EIP-712 digest on-chain (from the token's `DOMAIN_SEPARATOR`, `from = address(this)`) and records it in
   `approvedDigest`; `approvedNonce[nonce] = permissionId + 1` lets a payee find the approving agent.
 - `isValidSignature(hash, signature)` (ERC-1271) returns the magic value only for an approved digest. The signature bytes
@@ -74,8 +75,15 @@ A permission with a non-zero `asset` lets the agent pay x402 services from the w
 - An approval pays exactly one authorization: the digest binds wallet, payee, amount, validity window, nonce and token,
   and the token's own nonce tracking plus `approvedNonce` prevent replay.
 
-Known limitation: an approved but unsettled authorization stays valid until `validBefore`, even if the permission is
-revoked later (the agent caps that window at 15 minutes).
+Known limitations:
+
+- An approved but unsettled authorization stays valid until `validBefore`, even if the permission is revoked later
+  (the agent caps that window at 15 minutes).
+- Token scoping comes only from the asset's `DOMAIN_SEPARATOR()`. A token contract that returns another token's
+  separator (say, real USDC's) makes approvals under its permission valid for that other token, beyond the other
+  permission's budget. The owner must only whitelist genuine EIP-3009 tokens. Binding `isValidSignature` to
+  `msg.sender == asset` would close this, but it would also break off-chain ERC-1271 verification (facilitators call it
+  via `eth_call`), so it is not done.
 
 ## Factories
 
@@ -83,7 +91,9 @@ revoked later (the agent caps that window at 15 minutes).
 - `ReusableWalletFactory.createWallet` deploys a Mode B wallet owned by the caller.
 - `ReusableWalletFactory.createWalletFor(owner, agent, asset, maxSpend, expiresAt, maxUses)` deploys a Mode B wallet
   for any owner with one "any payee" permission (id 0). The factory owns the wallet only within that call. It is
-  permissionless, which is fine for the demo and not for production.
+  permissionless (the demo uses it to create a wallet for a flagged owner), so it emits
+  `WalletCreatedFor(owner, wallet, creator)` rather than `WalletCreated`: a UI that binds wallets to their owner by
+  event must only trust `WalletCreated`.
 
 ## Shared behavior
 

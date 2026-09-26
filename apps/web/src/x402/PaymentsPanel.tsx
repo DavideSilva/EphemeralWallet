@@ -14,7 +14,7 @@ type Reason = { source: string; code: string; detail: string };
 type Profile = { address: string; tier: "TRUSTED" | "CAUTION" | "BLOCKED"; toxicScore: number; reasons: Reason[]; labels: string[]; screenedAt: string };
 type Decision = {
   id: string; createdAt: string; url: string; wallet: string; payTo?: string; amount?: string; status: string;
-  verdict?: { kind: string; reasons: Reason[]; cap?: string }; payee?: Profile; approveTx?: string; settleTx?: string; error?: string;
+  verdict?: { kind: string; reasons: Reason[]; cap?: string }; payee?: Profile; approveTx?: string; validBefore?: string; settleTx?: string; error?: string;
 };
 type Hold = { id: string; url: string; payTo: string; amount: string; reasons: Reason[]; status: string };
 type PayerLogEntry = { at: string; payer: string; outcome: string; reasons: Reason[] };
@@ -22,6 +22,9 @@ type WalletStatus = { key: string; wallet: string; maxSpend: string; spent: stri
 
 const usdc = (amount?: string) => (amount ? `${Number(amount) / 1e6} USDC` : "");
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
+const pathOf = (url: string) => {
+  try { return new URL(url).pathname; } catch { return url; }
+};
 
 // Stamps share the card look: green for go, violet for waiting/caution, red for stop, grey for history.
 const tone = {
@@ -41,6 +44,8 @@ const outcomes: Record<string, { label: string; tone: Tone }> = {
   superseded: { label: "Approved by you", tone: "muted" },
   rejected_by_payee: { label: "Refused by seller", tone: "stop" },
   failed: { label: "Failed", tone: "stop" },
+  // Approved on-chain (budget spent) but settlement unconfirmed: it can still go through until it expires.
+  unsettled: { label: "Not confirmed", tone: "wait" },
 };
 const tierTone: Record<Profile["tier"], Tone> = { TRUSTED: "go", CAUTION: "wait", BLOCKED: "stop" };
 
@@ -253,11 +258,17 @@ export function PaymentsPanel() {
                 <Stamp label={d.status === "settled" && d.verdict?.kind === "CAP" ? "Paid (capped)" : outcome.label} tone={outcome.tone} />
                 {usdc(d.amount)} → <code className="font-mono text-sm">{short(d.payTo)}</code>
                 <span className="text-sm text-muted-foreground">
-                  {new URL(d.url).pathname}
+                  {pathOf(d.url)}
                   {d.verdict && ` · agent said ${d.verdict.kind}`}
                 </span>
               </p>
               {d.verdict && <Reasons reasons={d.verdict.reasons} />}
+              {d.status === "unsettled" && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Your budget is already reserved for this payment, and the seller can still collect it
+                  {d.validBefore ? ` until ${new Date(Number(d.validBefore) * 1000).toLocaleTimeString()}` : ""}.
+                </p>
+              )}
               {d.error && (d.status === "rejected_by_payee" ? <SellerRefusal error={d.error} /> : <p className="mt-2 text-sm text-void">{d.error}</p>)}
               {d.settleTx && (
                 <a

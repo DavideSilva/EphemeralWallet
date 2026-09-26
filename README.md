@@ -124,13 +124,20 @@ If 1 fails at the facilitator with a signature error, confirm the signature is 9
 Then run the UI flow: `npm --workspace @eaw/agent run daemon`, `npm run web`, open http://localhost:5173/payments (the **Payments** page), and repeat 1–4 with the buttons, approving the hold from the inbox.
 
 Origins must match exactly (`localhost` and `127.0.0.1` are different origins): open the UI at the same origin as
-`AGENT_UI_ORIGIN` (the daemon rejects other origins), and set `VITE_SERVICE_URL` to the same origin as `SERVICE_URL`.
+`AGENT_UI_ORIGIN` (the daemon rejects POSTs from any other origin, or with no `Origin` at all, and any `Host` other
+than `localhost`/`127.0.0.1` on its port), and set `VITE_SERVICE_URL` to the same origin as `SERVICE_URL`. The service
+only allows cross-origin reads from `SERVICE_UI_ORIGIN` (defaults to `AGENT_UI_ORIGIN`).
 
 ### Known limitations
 
 - The permission budget is consumed when the agent approves a payment on-chain, not when it settles.
 - An approved-but-unsettled authorization survives a revoke until its `validBefore` (the agent refuses windows over 15 minutes).
-- `createWalletFor` on the factory is permissionless — fine for the demo, not for production.
+- `createWalletFor` on the factory is permissionless — fine for the demo, not for production. It emits
+  `WalletCreatedFor` (with the creator), not `WalletCreated`, so it can't pass for the owner's own wallet.
+- A payment that was approved on-chain but not confirmed as settled shows as **Not confirmed** (`unsettled`): the budget
+  is spent and the seller can still settle it until `validBefore`.
+- The service screens the paying wallet reliably, but the owner and agent it screens are whatever the wallet contract
+  reports about itself; a hostile contract wallet can report clean ones.
 - Screening fails closed: an Intercepta timeout, error or unexpected response refuses the payment. Intercepta also
   answers 404 ("An Externally Owned Account with this address doesn't exist") for some addresses, such as Anvil's
   well-known dev accounts, so those counterparties are refused too.

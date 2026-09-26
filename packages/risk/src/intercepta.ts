@@ -63,6 +63,11 @@ function oneOf<T extends string>(field: string, value: unknown, allowed: readonl
   return match;
 }
 
+/**
+ * `riskLevel` is required. `trust`/`action` are optional in Intercepta's responses, so a missing one
+ * reads as neutral/info (no extra signal) and a present-but-unknown one fails closed. The agent never
+ * relies on them alone: a payment also needs `tokenIsCanonical` (the asset must be the chain's USDC).
+ */
 function parseToken(body: unknown): TokenScan {
   const o = asObject(body);
   return {

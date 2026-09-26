@@ -1,6 +1,6 @@
 import { x402Facilitator } from "@x402/core/facilitator";
 import type { RouteConfig } from "@x402/core/server";
-import type { Network, SupportedResponse } from "@x402/core/types";
+import type { Network, PaymentPayload, PaymentRequirements, SupportedResponse } from "@x402/core/types";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { ExactEvmScheme as ExactEvmServerScheme } from "@x402/evm/exact/server";
@@ -47,7 +47,16 @@ const resourceServer = new x402ResourceServer({
   getSupported: async () => facilitator.getSupported() as unknown as SupportedResponse
 })
   .register(NETWORK, new ExactEvmServerScheme())
-  .onBeforeVerify(createPayerGate({ profiler, readIdentities: createIdentityReader(config.rpcUrl), log: payerLog }));
+  .onBeforeVerify(
+    createPayerGate({
+      profiler,
+      readIdentities: createIdentityReader(config.rpcUrl),
+      // Runs before screening so an unsigned or invalid payload never costs an Intercepta call.
+      preVerify: ({ paymentPayload, requirements }) =>
+        facilitator.verify(paymentPayload as PaymentPayload, requirements as PaymentRequirements),
+      log: payerLog
+    })
+  );
 
 const route = (price: string, payTo: string, description: string): RouteConfig => ({
   accepts: [{ scheme: "exact", price, network: NETWORK, payTo }],
@@ -57,7 +66,9 @@ const route = (price: string, payTo: string, description: string): RouteConfig =
 
 const app = express();
 app.use((_req, res, next) => {
-  res.setHeader("access-control-allow-origin", "*");
+  // Not "*": /risk spends Intercepta quota and /decisions exposes the payer log.
+  res.setHeader("access-control-allow-origin", config.uiOrigin);
+  res.setHeader("vary", "origin");
   res.setHeader("access-control-expose-headers", "PAYMENT-REQUIRED, PAYMENT-RESPONSE");
   next();
 });

@@ -35,9 +35,11 @@ function mergeTraits(...lists: Trait[][]): Trait[] {
 
 export function createProfiler(
   client: InterceptaClient,
-  opts: { ttlMs?: number; cautionMinRisk?: number; toxicCautionMin?: number; now?: () => number } = {}
+  opts: { ttlMs?: number; maxEntries?: number; cautionMinRisk?: number; toxicCautionMin?: number; now?: () => number } = {}
 ): Profiler {
   const ttlMs = opts.ttlMs ?? 5 * 60_000;
+  // Bounded: profiles are requested for arbitrary addresses (daemon /profiles, service /risk).
+  const maxEntries = opts.maxEntries ?? 1000;
   const cautionMinRisk = opts.cautionMinRisk ?? 1;
   const toxicCautionMin = opts.toxicCautionMin ?? 50;
   const now = opts.now ?? Date.now;
@@ -65,7 +67,9 @@ export function createProfiler(
       traits,
       screenedAt: new Date(now()).toISOString()
     };
+    cache.delete(key);
     cache.set(key, { at: now(), scan: result });
+    if (cache.size > maxEntries) cache.delete(cache.keys().next().value!);
     return result;
   }
 

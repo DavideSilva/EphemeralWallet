@@ -28,6 +28,8 @@ contract ReusableWalletFactoryTest is Test {
         address token = makeAddr("usdc");
         address creator = makeAddr("creator");
 
+        vm.expectEmit(true, false, true, false, address(factory));
+        emit ReusableWalletFactory.WalletCreatedFor(owner, address(0), creator);
         vm.prank(creator);
         address walletAddress = factory.createWalletFor(owner, agent, token, 1e6, uint64(block.timestamp + 1 days), 10);
 

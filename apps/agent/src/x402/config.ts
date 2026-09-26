@@ -1,4 +1,4 @@
-import type { Hex } from "viem";
+import { getAddress, type Hex } from "viem";
 import type { Address } from "@eaw/risk";
 
 export type WalletRef = { wallet: Address; permissionId: bigint };
@@ -20,6 +20,14 @@ function required(name: string): string {
   return value;
 }
 
+function address(name: string, value: string): Address {
+  try {
+    return getAddress(value);
+  } catch {
+    throw new Error(`${name} is not an address: ${value}`);
+  }
+}
+
 export function loadAgentConfig(): AgentConfig {
   return {
     rpcUrl: process.env.RPC_URL ?? "https://sepolia.base.org",
@@ -29,9 +37,12 @@ export function loadAgentConfig(): AgentConfig {
     serviceUrl: process.env.SERVICE_URL ?? "http://localhost:4021",
     uiOrigin: process.env.AGENT_UI_ORIGIN ?? "http://localhost:5173",
     wallets: {
-      default: { wallet: required("WALLET_ADDRESS") as Address, permissionId: BigInt(process.env.PERMISSION_ID ?? 0) },
+      default: { wallet: address("WALLET_ADDRESS", required("WALLET_ADDRESS")), permissionId: BigInt(process.env.PERMISSION_ID ?? 0) },
       risky: process.env.RISKY_WALLET_ADDRESS
-        ? { wallet: process.env.RISKY_WALLET_ADDRESS as Address, permissionId: 0n }
+        ? {
+            wallet: address("RISKY_WALLET_ADDRESS", process.env.RISKY_WALLET_ADDRESS),
+            permissionId: BigInt(process.env.RISKY_PERMISSION_ID ?? 0)
+          }
         : undefined
     }
   };

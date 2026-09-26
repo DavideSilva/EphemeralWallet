@@ -125,6 +125,15 @@ export const reusableFactoryAbi = [
       { indexed: false, name: "fundedAmount", type: "uint256" },
     ],
   },
+  {
+    type: "event",
+    name: "WalletCreatedFor",
+    inputs: [
+      { indexed: true, name: "owner", type: "address" },
+      { indexed: true, name: "wallet", type: "address" },
+      { indexed: true, name: "creator", type: "address" },
+    ],
+  },
 ] as const;
 
 export const reusableWalletAbi = [
@@ -322,6 +331,7 @@ export const reusableWalletAbi = [
   { type: "error", name: "NotNativePermission", inputs: [] },
   { type: "error", name: "AuthorizationOutlivesPermission", inputs: [] },
   { type: "error", name: "NonceAlreadyApproved", inputs: [] },
+  { type: "error", name: "InvalidAuthorizationWindow", inputs: [] },
 ] as const;
 
 export const merchantAbi = [
