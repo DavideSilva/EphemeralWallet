@@ -6,10 +6,10 @@ import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { ExactEvmScheme as ExactEvmServerScheme } from "@x402/evm/exact/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import express from "express";
-import { createWalletClient, http, publicActions } from "viem";
+import { createWalletClient, http, isAddress, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
-import { createInterceptaClient, createProfiler, type Address } from "@eaw/risk";
+import { createInterceptaClient, createProfiler } from "@eaw/risk";
 import { loadServiceConfig } from "./config";
 import { createIdentityReader, createPayerGate, type PayerLogEntry } from "./payer-gate";
 
@@ -62,8 +62,14 @@ app.use((_req, res, next) => {
   next();
 });
 app.get("/risk/:address", async (req, res) => {
+  const address = req.params.address;
+  // Express decodes %2F in params: without this check a crafted value could reach other Intercepta paths with our key.
+  if (!isAddress(address, { strict: false })) {
+    res.status(400).json({ error: "invalid address" });
+    return;
+  }
   try {
-    res.json(await profiler.getProfile(req.params.address as Address));
+    res.json(await profiler.getProfile(address));
   } catch (error) {
     res.status(503).json({ error: error instanceof Error ? error.message : String(error) });
   }
