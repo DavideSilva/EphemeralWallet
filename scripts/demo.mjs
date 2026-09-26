@@ -81,11 +81,12 @@ try {
     const output = deploy.stdout + deploy.stderr;
     const factory = output.match(/MissionFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const reusableFactory = output.match(/ReusableWalletFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
+    const approvalHook = output.match(/ApprovalHook\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const cafe = output.match(/Cafe\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const ticketOffice = output.match(/TicketOffice\s+(0x[a-fA-F0-9]{40})/)?.[1];
     const tipJar = output.match(/TipJar\s+(0x[a-fA-F0-9]{40})/)?.[1];
 
-    if (!factory || !reusableFactory || !cafe || !ticketOffice || !tipJar) {
+    if (!factory || !reusableFactory || !approvalHook || !cafe || !ticketOffice || !tipJar) {
       throw new Error("Could not read deployed contract addresses");
     }
 
@@ -101,6 +102,7 @@ try {
         ...process.env,
         VITE_FACTORY: factory,
         VITE_REUSABLE_FACTORY: reusableFactory,
+        VITE_APPROVAL_HOOK: approvalHook,
         VITE_MERCHANTS: [cafe, ticketOffice, tipJar].join(",")
       }
     });

@@ -5,12 +5,14 @@ import "forge-std/Script.sol";
 import {MissionFactory} from "../src/MissionFactory.sol";
 import {ReusableWalletFactory} from "../src/ReusableWalletFactory.sol";
 import {Merchant} from "../src/Merchant.sol";
+import {ApprovalHook} from "../src/ApprovalHook.sol";
 
 contract Deploy is Script {
     function run() external {
         vm.startBroadcast();
         MissionFactory missionFactory = new MissionFactory();
         ReusableWalletFactory reusableFactory = new ReusableWalletFactory();
+        ApprovalHook approvalHook = new ApprovalHook();
 
         Merchant.Item[] memory cafeItems = new Merchant.Item[](3);
         cafeItems[0] = Merchant.Item("Espresso", 0.001 ether);
@@ -33,6 +35,7 @@ contract Deploy is Script {
 
         console2.log("MissionFactory", address(missionFactory));
         console2.log("ReusableWalletFactory", address(reusableFactory));
+        console2.log("ApprovalHook", address(approvalHook));
         console2.log("Cafe", address(cafe));
         console2.log("TicketOffice", address(ticketOffice));
         console2.log("TipJar", address(tipJar));

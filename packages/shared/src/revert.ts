@@ -1,5 +1,5 @@
 import { decodeErrorResult, decodeFunctionData, type Abi, type Address, type Hex } from "viem";
-import { merchantAbi, missionWalletAbi, reusableWalletAbi } from "./abis";
+import { approvalHookAbi, merchantAbi, missionWalletAbi, reusableWalletAbi } from "./abis";
 
 const reasons: Record<string, string> = {
   NotOwner: "Only the owner can do this",
@@ -18,13 +18,14 @@ const reasons: Record<string, string> = {
   WrongPayment: "Payment didn't match the catalog price",
   CallFailed: "Merchant rejected the purchase",
   HookRejected: "Held by a card plugin",
+  ApprovalRequired: "Waiting for your approval",
   Reentered: "Rejected by the card",
 };
 
 const walletErrors = [...missionWalletAbi, ...reusableWalletAbi].filter(item => item.type === "error");
 const merchantErrors = merchantAbi.filter(item => item.type === "error");
 // Errors that card plugins revert with. The wallet wraps them in HookRejected(hook, reason).
-const hookErrors: Abi = [];
+const hookErrors: Abi = approvalHookAbi.filter(item => item.type === "error");
 
 export type DecodedRevert = {
   /** The innermost error name: the merchant's or plugin's own error when the wallet wrapped one. */
