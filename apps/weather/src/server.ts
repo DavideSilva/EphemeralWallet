@@ -14,7 +14,7 @@ if (!payTo || !/^0x[0-9a-fA-F]{40}$/.test(payTo)) {
   console.error("WEATHER_PAY_TO must be the 0x address that receives payments.");
   process.exit(1);
 }
-const port = Number(process.env.WEATHER_PORT ?? 4021);
+const port = Number(process.env.WEATHER_PORT ?? 4022);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   console.error("WEATHER_PORT must be a port number.");
   process.exit(1);

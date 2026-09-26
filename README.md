@@ -175,10 +175,10 @@ A mock web service that sells a Mount Fuji weather report behind [x402](https://
 
 ```bash
 npm run weather
-curl -i http://localhost:4021/weather/mount-fuji   # 402 Payment Required
+curl -i http://localhost:4022/weather/mount-fuji   # 402 Payment Required
 ```
 
-Unlike the demo above, this runs on a public testnet: each report costs $0.01 in USDC on Base Sepolia, settled through the public facilitator at `https://x402.org/facilitator`. To make a paid request, use any x402 client (for example [`@x402/fetch`](https://www.npmjs.com/package/@x402/fetch)) with a wallet holding Base Sepolia USDC from the [Circle faucet](https://faucet.circle.com). The report is random mock data. `WEATHER_PORT` changes the port.
+It runs on the public testnet with no screening or wallet contracts: each report costs $0.01 in USDC on Base Sepolia, settled through the public facilitator at `https://x402.org/facilitator`. To make a paid request, use any x402 client (for example [`@x402/fetch`](https://www.npmjs.com/package/@x402/fetch)) with a wallet holding Base Sepolia USDC from the [Circle faucet](https://faucet.circle.com). The report is random mock data. `WEATHER_PORT` changes the port.
 
 ## Structure
 
