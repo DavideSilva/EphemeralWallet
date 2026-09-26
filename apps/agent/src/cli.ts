@@ -31,7 +31,13 @@ const walletClient=createWalletClient({account:agent,chain:foundry,transport:htt
 const value=parseEther(process.env.DEMO_PRICE_ETH ?? "0.001");
 const item=keccak256(stringToBytes(process.env.DEMO_ITEM ?? "coffee"));
 const calldata=encodeFunctionData({abi:shopAbi,functionName:"buy",args:[item]});
-validateAction({wallet:missionWallet,owner,agent,allowedTarget,maxSpend,expiresAt:BigInt(expiresAt),used},{target:allowedTarget,value,calldata},BigInt(Math.floor(Date.now()/1000)));
+try {
+  validateAction({wallet:missionWallet,owner,agent,allowedTarget,maxSpend,expiresAt:BigInt(expiresAt),used},{target:allowedTarget,value,calldata},BigInt(Math.floor(Date.now()/1000)));
+} catch (error) {
+  const message=error instanceof Error ? error.message : String(error);
+  console.error(`mission cannot be executed: ${message}`);
+  process.exit(1);
+}
 
 console.log("mission",missionWallet);
 console.log("agent",agent);

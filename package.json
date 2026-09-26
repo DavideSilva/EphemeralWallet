@@ -3,6 +3,8 @@
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "agent": "npm --workspace @eaw/agent run start"
+    "demo": "node scripts/demo.mjs",
+    "agent": "npm --workspace @eaw/agent run start",
+    "web": "npm --workspace @eaw/web run dev"
   }
 }
