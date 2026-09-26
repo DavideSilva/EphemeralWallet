@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { ScreeningUnavailable, type Profile } from "@eaw/risk";
-import { createPayerGate, type PayerLogEntry } from "../src/payer-gate";
+import type { Hex } from "viem";
+import { ScreeningUnavailable, type Address, type Profile } from "@eaw/risk";
+import { createPayerGate, readIdentitiesWith, type IdentityRpcClient, type PayerLogEntry } from "../src/payer-gate";
 
 const PAYER = "0x1111111111111111111111111111111111111111";
 const OWNER = "0x4444444444444444444444444444444444444444";
+const AGENT = "0x5555555555555555555555555555555555555555";
 const NONCE = "0x3333333333333333333333333333333333333333333333333333333333333333";
 const payload = { payload: { authorization: { from: PAYER, nonce: NONCE }, signature: "0x" } };
 const profile = (address: string, tier: Profile["tier"]): Profile => ({
@@ -43,5 +45,44 @@ describe("payer gate", () => {
 
   it("refuses payloads without an EIP-3009 authorization", async () => {
     expect(await gate({})({ paymentPayload: { payload: {} }, requirements: {} })).toMatchObject({ abort: true, reason: "unsupported_payload" });
+  });
+});
+
+function fakeRpcClient(opts: { code?: Hex; owner?: Address; approvedNonce?: bigint; agent?: Address }): IdentityRpcClient {
+  const readContract = vi.fn(async ({ functionName }: { functionName: string }) => {
+    if (functionName === "owner") return opts.owner;
+    if (functionName === "approvedNonce") return opts.approvedNonce ?? 0n;
+    if (functionName === "permissions") return [opts.agent, opts.owner, 0n, 0n, 0n, 0, 0, false, opts.owner] as const;
+    throw new Error(`unexpected functionName: ${functionName}`);
+  });
+  return { getCode: vi.fn(async () => opts.code), readContract };
+}
+
+describe("readIdentitiesWith", () => {
+  it.each([["0x" as Hex], [undefined]])("resolves only the payer for an EOA wallet (getCode -> %s)", async code => {
+    const client = fakeRpcClient({ code });
+    const identities = await readIdentitiesWith(client)(PAYER, NONCE);
+    expect(identities).toEqual([{ role: "payer", address: PAYER }]);
+    expect(client.readContract).not.toHaveBeenCalled();
+  });
+
+  it("resolves payer + owner for a contract wallet with no approved nonce for this payment", async () => {
+    const client = fakeRpcClient({ code: "0xabc", owner: OWNER, approvedNonce: 0n });
+    const identities = await readIdentitiesWith(client)(PAYER, NONCE);
+    expect(identities).toEqual([
+      { role: "payer", address: PAYER },
+      { role: "owner", address: OWNER }
+    ]);
+  });
+
+  it("resolves the approving agent from permissions(approvedNonce - 1)", async () => {
+    const client = fakeRpcClient({ code: "0xabc", owner: OWNER, approvedNonce: 3n, agent: AGENT });
+    const identities = await readIdentitiesWith(client)(PAYER, NONCE);
+    expect(identities).toEqual([
+      { role: "payer", address: PAYER },
+      { role: "owner", address: OWNER },
+      { role: "agent", address: AGENT }
+    ]);
+    expect(client.readContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: "permissions", args: [2n] }));
   });
 });

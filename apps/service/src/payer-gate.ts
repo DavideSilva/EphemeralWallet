@@ -7,22 +7,41 @@ export type Identity = { role: "payer" | "owner" | "agent"; address: Address };
 export type PayerLogEntry = { at: string; payer: Address; outcome: "accepted" | "refused"; reasons: Reason[]; profiles: Profile[] };
 type Abort = { abort: true; reason: string; message?: string };
 
-/** Everyone who controls or funds the paying wallet: the wallet itself, its owner and the approving agent. */
-export function createIdentityReader(rpcUrl: string) {
-  const client = createPublicClient({ chain: baseSepolia, transport: http(rpcUrl) });
+/** The minimal on-chain read surface `readIdentitiesWith` needs — small enough to fake in tests. */
+export type IdentityRpcClient = {
+  getCode(args: { address: Address }): Promise<Hex | undefined>;
+  readContract(args: { address: Address; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
+};
+
+/**
+ * Everyone who controls or funds the paying wallet: the wallet itself, its owner and the
+ * approving agent. Pure function of an `IdentityRpcClient` so the on-chain resolution chain
+ * (approvedNonce -> permissionId - 1 -> permissions().agent) can be unit-tested without a network.
+ */
+export function readIdentitiesWith(client: IdentityRpcClient) {
   return async (payer: Address, nonce: Hex): Promise<Identity[]> => {
     const identities: Identity[] = [{ role: "payer", address: payer }];
     const code = await client.getCode({ address: payer });
     if (!code || code === "0x") return identities;
-    const owner = await client.readContract({ address: payer, abi: reusableWalletAbi, functionName: "owner" });
+    const owner = (await client.readContract({ address: payer, abi: reusableWalletAbi, functionName: "owner" })) as Address;
     identities.push({ role: "owner", address: owner });
-    const permissionIdPlusOne = await client.readContract({ address: payer, abi: reusableWalletAbi, functionName: "approvedNonce", args: [nonce] });
+    const permissionIdPlusOne = (await client.readContract({
+      address: payer, abi: reusableWalletAbi, functionName: "approvedNonce", args: [nonce]
+    })) as bigint;
     if (permissionIdPlusOne > 0n) {
-      const [agent] = await client.readContract({ address: payer, abi: reusableWalletAbi, functionName: "permissions", args: [permissionIdPlusOne - 1n] });
+      const [agent] = (await client.readContract({
+        address: payer, abi: reusableWalletAbi, functionName: "permissions", args: [permissionIdPlusOne - 1n]
+      })) as readonly [Address, ...unknown[]];
       identities.push({ role: "agent", address: agent });
     }
     return identities;
   };
+}
+
+/** Thin viem wrapper: builds a Base Sepolia public client and delegates to `readIdentitiesWith`. */
+export function createIdentityReader(rpcUrl: string) {
+  const client = createPublicClient({ chain: baseSepolia, transport: http(rpcUrl) });
+  return readIdentitiesWith(client);
 }
 
 /**
