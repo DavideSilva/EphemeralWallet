@@ -21,47 +21,42 @@ npm run demo
 
 1. starts Anvil on `127.0.0.1:8545`
 2. installs `forge-std` if needed
-3. deploys `MissionFactory` and `DemoShop`
-4. injects their addresses into the Vite app
+3. deploys `MissionFactory`, `ReusableWalletFactory` and three demo merchants (Café, Ticket office, Tip jar)
+4. passes their addresses to the web app
 5. starts the UI at `http://localhost:5173`
 
-Open the UI. It uses Anvil's first unlocked account on the local chain (chain ID 31337).
+The UI signs as Anvil account #0 (no wallet popups) and issues cards to Anvil account #1 by default. Stop everything with Ctrl-C.
 
-The default agent address in the UI is Anvil account #1. Create a mission with a budget of at least `0.001 ETH`. The UI waits for the transaction, extracts the new mission-wallet address from `MissionCreated`, and prints the command for the agent.
+### Cards
 
-Run that command in a second terminal:
+A card lets one agent spend at one merchant, up to a budget, until it expires.
 
-```bash
-npm run agent -- <MISSION_WALLET>
-```
+- **One-time card**: its own `EphemeralMissionWallet`, funded with the budget. One purchase, then it's used up; cancelling it refunds the balance.
+- **Multi-use card**: a permission on your `ReusablePermissionWallet` account, which is opened the first time you issue one. The agent can buy until the budget or uses run out; cancelling revokes only that card.
 
-The agent reads the constraints from the mission wallet, constructs a purchase of `coffee` from the allowed `DemoShop`, validates the target/budget/expiry locally, and executes it through Anvil's unlocked agent account.
+### Give an agent a task
 
-Running the same command a second time should fail because the authority has already been consumed.
-
-### Reusable wallet mode
-
-Switch to **Reusable wallet** in the UI. Create and fund the wallet once, then add a permission with its own agent, target, cumulative budget, expiry, and maximum uses.
-
-The UI prints:
+Each card's page shows the command to run in a second terminal:
 
 ```bash
-npm run permission-agent -- <REUSABLE_WALLET> <PERMISSION_ID>
+npm run agent -- <card> "buy two cinema tickets for tonight"
 ```
 
-Run it multiple times up to the permission's max-use/max-spend limits. You can create additional permissions on the same wallet without affecting existing ones.
+`<card>` is the wallet address for a one-time card, or `<wallet>-<id>` for a multi-use card. The agent reads the merchant's on-chain catalog, plans the order, and sends it with the task as the on-chain `memo`.
 
-Stop `npm run demo` with Ctrl-C to stop both Vite and Anvil.
+Planning uses Claude (`claude-opus-5`) when Anthropic credentials are available, for example `ANTHROPIC_API_KEY` in a root `.env` (see `.env.example`). Otherwise, or with `AGENT_PLANNER=offline`, it matches the task against the catalog by keyword.
+
+The agent isn't told its limits and sends over-limit orders anyway, so the card is the one that says no. Rejected attempts are mined as reverts and show up in the app's activity as **Blocked**, with the reason.
 
 ## Structure
 
-- `SPEC.md` — source of truth for MVP behavior
-- `packages/contracts` — mission wallet, factory, demo target, tests and deployment script
-- `packages/shared` — shared TypeScript types
-- `apps/agent` — local agent executor
-- `apps/web` — mission creation UI
-- `scripts/demo.mjs` — local demo orchestrator
+- `SPEC.md`: source of truth for contract behavior
+- `packages/contracts`: wallets, factories, demo merchants, tests and deployment script
+- `packages/shared`: ABIs and revert decoding shared by the app and the agent
+- `apps/agent`: agent CLI with the Claude and offline planners
+- `apps/web`: React app (TanStack Router and Query, wagmi, shadcn/ui) for cards and activity
+- `scripts/demo.mjs`: local demo orchestrator
 
 ## Current scope
 
-The MVP deliberately uses native ETH and a local Anvil chain. Both disposable-wallet and reusable-permission models are implemented. ERC-20 support, real DeFi targets, ERC-4337/session keys, and LLM planning come next.
+The MVP deliberately uses native ETH and a local Anvil chain. ERC-20 support, real DeFi targets, and ERC-4337/session keys come next.

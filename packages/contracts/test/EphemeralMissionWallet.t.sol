@@ -36,7 +36,7 @@ contract EphemeralMissionWalletTest is Test {
 
     function testAgentCanExecuteOnce() public {
         vm.prank(agent);
-        wallet.execute(address(target), 0.2 ether, abi.encodeCall(Target.ping, ()));
+        wallet.execute(address(target), 0.2 ether, abi.encodeCall(Target.ping, ()), "");
 
         assertTrue(wallet.used());
         assertEq(target.calls(), 1);
@@ -44,37 +44,37 @@ contract EphemeralMissionWalletTest is Test {
 
         vm.expectRevert(EphemeralMissionWallet.MissionAlreadyUsed.selector);
         vm.prank(agent);
-        wallet.execute(address(target), 0, abi.encodeCall(Target.ping, ()));
+        wallet.execute(address(target), 0, abi.encodeCall(Target.ping, ()), "");
     }
 
     function testStrangerCannotExecute() public {
         vm.expectRevert(EphemeralMissionWallet.NotAgent.selector);
         vm.prank(stranger);
-        wallet.execute(address(target), 0, abi.encodeCall(Target.ping, ()));
+        wallet.execute(address(target), 0, abi.encodeCall(Target.ping, ()), "");
     }
 
     function testCannotExceedBudget() public {
         vm.expectRevert(EphemeralMissionWallet.SpendLimitExceeded.selector);
         vm.prank(agent);
-        wallet.execute(address(target), 0.6 ether, abi.encodeCall(Target.ping, ()));
+        wallet.execute(address(target), 0.6 ether, abi.encodeCall(Target.ping, ()), "");
     }
 
     function testCannotCallAnotherTarget() public {
         vm.expectRevert(EphemeralMissionWallet.InvalidTarget.selector);
         vm.prank(agent);
-        wallet.execute(address(otherTarget), 0, abi.encodeCall(Target.ping, ()));
+        wallet.execute(address(otherTarget), 0, abi.encodeCall(Target.ping, ()), "");
     }
 
     function testCannotExecuteAfterExpiry() public {
         vm.warp(block.timestamp + 2 hours);
         vm.expectRevert(EphemeralMissionWallet.MissionExpired.selector);
         vm.prank(agent);
-        wallet.execute(address(target), 0, abi.encodeCall(Target.ping, ()));
+        wallet.execute(address(target), 0, abi.encodeCall(Target.ping, ()), "");
     }
 
     function testOwnerCanReclaimAfterExecution() public {
         vm.prank(agent);
-        wallet.execute(address(target), 0.2 ether, abi.encodeCall(Target.ping, ()));
+        wallet.execute(address(target), 0.2 ether, abi.encodeCall(Target.ping, ()), "");
 
         uint256 beforeBalance = owner.balance;
         vm.prank(owner);
@@ -89,5 +89,55 @@ contract EphemeralMissionWalletTest is Test {
         vm.prank(owner);
         wallet.reclaim();
         assertEq(address(wallet).balance, 0);
+    }
+
+    function testExecuteEmitsMemo() public {
+        vm.expectEmit(true, true, false, true, address(wallet));
+        emit EphemeralMissionWallet.Executed(agent, address(target), 0.2 ether, abi.encodeCall(Target.ping, ()), "buy a coffee");
+        vm.prank(agent);
+        wallet.execute(address(target), 0.2 ether, abi.encodeCall(Target.ping, ()), "buy a coffee");
+    }
+
+    function testOwnerCanCancelAndGetRefund() public {
+        uint256 beforeBalance = owner.balance;
+        vm.prank(owner);
+        wallet.cancel();
+
+        assertTrue(wallet.cancelled());
+        assertEq(owner.balance - beforeBalance, 1 ether);
+        assertEq(address(wallet).balance, 0);
+    }
+
+    function testCancelledMissionCannotExecute() public {
+        vm.prank(owner);
+        wallet.cancel();
+
+        vm.expectRevert(EphemeralMissionWallet.MissionCancelled.selector);
+        vm.prank(agent);
+        wallet.execute(address(target), 0, abi.encodeCall(Target.ping, ()), "");
+    }
+
+    function testCannotCancelTwice() public {
+        vm.prank(owner);
+        wallet.cancel();
+
+        vm.expectRevert(EphemeralMissionWallet.MissionCancelled.selector);
+        vm.prank(owner);
+        wallet.cancel();
+    }
+
+    function testCannotCancelUsedMission() public {
+        vm.prank(agent);
+        wallet.execute(address(target), 0.2 ether, abi.encodeCall(Target.ping, ()), "");
+
+        vm.expectRevert(EphemeralMissionWallet.MissionAlreadyUsed.selector);
+        vm.prank(owner);
+        wallet.cancel();
+    }
+
+    function testStrangerCannotCancel() public {
+        vm.expectRevert(EphemeralMissionWallet.NotOwner.selector);
+        vm.prank(stranger);
+        wallet.cancel();
     }
 }

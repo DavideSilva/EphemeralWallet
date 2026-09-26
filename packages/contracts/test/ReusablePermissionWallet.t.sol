@@ -49,10 +49,10 @@ contract ReusablePermissionWalletTest is Test {
         uint256 permissionB = createPermission(agentB, address(targetB), 2 ether, 1);
 
         vm.prank(agentA);
-        wallet.execute(permissionA, address(targetA), 0.4 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionA, address(targetA), 0.4 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
 
         vm.prank(agentB);
-        wallet.execute(permissionB, address(targetB), 1.5 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionB, address(targetB), 1.5 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
 
         (, , , uint256 spentA, , , uint32 usesA, ) = wallet.permissions(permissionA);
         (, , , uint256 spentB, , , uint32 usesB, ) = wallet.permissions(permissionB);
@@ -68,24 +68,24 @@ contract ReusablePermissionWalletTest is Test {
         uint256 permissionId = createPermission(agentA, address(targetA), 1 ether, 3);
 
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetA), 0.6 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.6 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
 
         vm.expectRevert(ReusablePermissionWallet.SpendLimitExceeded.selector);
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetA), 0.5 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.5 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
     }
 
     function testPermissionStopsAtMaxUses() public {
         uint256 permissionId = createPermission(agentA, address(targetA), 1 ether, 2);
 
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
 
         vm.expectRevert(ReusablePermissionWallet.PermissionExhausted.selector);
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
     }
 
     function testOwnerCanRevokeOnePermissionWithoutAffectingAnother() public {
@@ -97,10 +97,10 @@ contract ReusablePermissionWalletTest is Test {
 
         vm.expectRevert(ReusablePermissionWallet.PermissionIsRevoked.selector);
         vm.prank(agentA);
-        wallet.execute(permissionA, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionA, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
 
         vm.prank(agentB);
-        wallet.execute(permissionB, address(targetB), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionB, address(targetB), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
         assertEq(targetB.calls(), 1);
     }
 
@@ -109,7 +109,7 @@ contract ReusablePermissionWalletTest is Test {
 
         vm.expectRevert(ReusablePermissionWallet.InvalidTarget.selector);
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetB), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetB), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
     }
 
     function testOtherAgentCannotUsePermission() public {
@@ -117,7 +117,7 @@ contract ReusablePermissionWalletTest is Test {
 
         vm.expectRevert(ReusablePermissionWallet.NotAgent.selector);
         vm.prank(agentB);
-        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
     }
 
     function testExpiredPermissionCannotExecute() public {
@@ -126,7 +126,7 @@ contract ReusablePermissionWalletTest is Test {
 
         vm.expectRevert(ReusablePermissionWallet.PermissionExpired.selector);
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
     }
 
     function testOwnerCanWithdrawWithoutDestroyingWallet() public {
@@ -140,7 +140,17 @@ contract ReusablePermissionWalletTest is Test {
 
         uint256 permissionId = createPermission(agentA, address(targetA), 1 ether, 1);
         vm.prank(agentA);
-        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()));
+        wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
         assertEq(targetA.calls(), 1);
+    }
+
+    function testExecuteEmitsMemo() public {
+        uint256 permissionId = createPermission(agentA, address(targetA), 1 ether, 1);
+        bytes memory data = abi.encodeCall(PermissionTarget.ping, ());
+
+        vm.expectEmit(true, true, true, true, address(wallet));
+        emit ReusablePermissionWallet.Executed(permissionId, agentA, address(targetA), 0.1 ether, data, "tip the barista");
+        vm.prank(agentA);
+        wallet.execute(permissionId, address(targetA), 0.1 ether, data, "tip the barista");
     }
 }

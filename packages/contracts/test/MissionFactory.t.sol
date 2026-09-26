@@ -4,17 +4,19 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {MissionFactory} from "../src/MissionFactory.sol";
 import {EphemeralMissionWallet} from "../src/EphemeralMissionWallet.sol";
-import {DemoShop} from "../src/DemoShop.sol";
+import {Merchant} from "../src/Merchant.sol";
 
 contract MissionFactoryTest is Test {
     MissionFactory factory;
-    DemoShop shop;
+    Merchant shop;
     address owner = makeAddr("owner");
     address agent = makeAddr("agent");
 
     function setUp() public {
         factory = new MissionFactory();
-        shop = new DemoShop();
+        Merchant.Item[] memory items = new Merchant.Item[](1);
+        items[0] = Merchant.Item("Coffee", 0.001 ether);
+        shop = new Merchant("Cafe", items);
         vm.deal(owner, 1 ether);
     }
 
@@ -36,7 +38,8 @@ contract MissionFactoryTest is Test {
         wallet.execute(
             address(shop),
             0.001 ether,
-            abi.encodeCall(DemoShop.buy, (keccak256("coffee")))
+            abi.encodeCall(Merchant.buy, (0, 1)),
+            "buy a coffee"
         );
 
         assertTrue(wallet.used());
