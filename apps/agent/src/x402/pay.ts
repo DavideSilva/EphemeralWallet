@@ -40,49 +40,54 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
       approveTx: seen.approveTx
     };
 
-  const first = await fetch(url, { redirect: "manual" });
-  if (first.status !== 402) return ctx.store.addDecision({ ...base, status: "failed", error: `expected 402, got ${first.status}` });
-  const header = first.headers.get("PAYMENT-REQUIRED");
-  if (!header) return ctx.store.addDecision({ ...base, status: "failed", error: "missing PAYMENT-REQUIRED header" });
-  const paymentRequired = decodePaymentRequiredHeader(header);
-
-  const select = (_version: number, requirements: PaymentRequirements[]) => {
-    const match = requirements.find(r => r.network === NETWORK && r.scheme === "exact");
-    if (!match) throw new Error(`no exact ${NETWORK} requirement offered`);
-    return match;
-  };
-  const client = new x402Client(select).register(NETWORK, new ExactEvmScheme(signer));
-
-  let payload;
+  // Total over network and header-decoding errors: every attempt ends as a recorded Decision.
   try {
-    payload = await client.createPaymentPayload(paymentRequired);
-  } catch (error) {
-    if (!(error instanceof PaymentBlocked)) {
-      return ctx.store.addDecision({ ...base, ...detail(), status: "failed", error: error instanceof Error ? error.message : String(error) });
-    }
-    const decision = ctx.store.addDecision({ ...base, ...detail(), status: error.verdict.kind === "HOLD" ? "held" : "refused" });
-    if (error.verdict.kind === "HOLD" && seen) {
-      const hold = ctx.store.addHold({
-        decisionId: decision.id, url, walletKey, payTo: seen.auth.to, amount: seen.auth.value.toString(), reasons: error.verdict.reasons
-      });
-      decision.holdId = hold.id;
-    }
-    return decision;
-  }
+    const first = await fetch(url, { redirect: "manual" });
+    if (first.status !== 402) return ctx.store.addDecision({ ...base, status: "failed", error: `expected 402, got ${first.status}` });
+    const header = first.headers.get("PAYMENT-REQUIRED");
+    if (!header) return ctx.store.addDecision({ ...base, status: "failed", error: "missing PAYMENT-REQUIRED header" });
+    const paymentRequired = decodePaymentRequiredHeader(header);
 
-  const paid = await fetch(url, { headers: { "PAYMENT-SIGNATURE": encodePaymentSignatureHeader(payload) }, redirect: "manual" });
-  if (paid.status === 200) {
-    const settlement = paid.headers.get("PAYMENT-RESPONSE");
-    const settleTx = settlement ? decodePaymentResponseHeader(settlement).transaction : undefined;
-    return ctx.store.addDecision({ ...base, ...detail(), status: "settled", settleTx });
+    const select = (_version: number, requirements: PaymentRequirements[]) => {
+      const match = requirements.find(r => r.network === NETWORK && r.scheme === "exact");
+      if (!match) throw new Error(`no exact ${NETWORK} requirement offered`);
+      return match;
+    };
+    const client = new x402Client(select).register(NETWORK, new ExactEvmScheme(signer));
+
+    let payload;
+    try {
+      payload = await client.createPaymentPayload(paymentRequired);
+    } catch (error) {
+      if (!(error instanceof PaymentBlocked)) {
+        return ctx.store.addDecision({ ...base, ...detail(), status: "failed", error: error instanceof Error ? error.message : String(error) });
+      }
+      const decision = ctx.store.addDecision({ ...base, ...detail(), status: error.verdict.kind === "HOLD" ? "held" : "refused" });
+      if (error.verdict.kind === "HOLD" && seen) {
+        const hold = ctx.store.addHold({
+          decisionId: decision.id, url, walletKey, payTo: seen.auth.to, amount: seen.auth.value.toString(), reasons: error.verdict.reasons
+        });
+        decision.holdId = hold.id;
+      }
+      return decision;
+    }
+
+    const paid = await fetch(url, { headers: { "PAYMENT-SIGNATURE": encodePaymentSignatureHeader(payload) }, redirect: "manual" });
+    if (paid.status === 200) {
+      const settlement = paid.headers.get("PAYMENT-RESPONSE");
+      const settleTx = settlement ? decodePaymentResponseHeader(settlement).transaction : undefined;
+      return ctx.store.addDecision({ ...base, ...detail(), status: "settled", settleTx });
+    }
+    const rejection = paid.headers.get("PAYMENT-REQUIRED");
+    const reason = rejection ? decodePaymentRequiredHeader(rejection).error : undefined;
+    const payerRefused = reason !== undefined && (reason.startsWith("payer_refused") || reason.startsWith("payer_screening_unavailable"));
+    return ctx.store.addDecision({
+      ...base,
+      ...detail(),
+      status: payerRefused ? "rejected_by_payee" : "failed",
+      error: reason ?? `HTTP ${paid.status}`
+    });
+  } catch (error) {
+    return ctx.store.addDecision({ ...base, ...detail(), status: "failed", error: error instanceof Error ? error.message : String(error) });
   }
-  const rejection = paid.headers.get("PAYMENT-REQUIRED");
-  const reason = rejection ? decodePaymentRequiredHeader(rejection).error : undefined;
-  const payerRefused = reason !== undefined && (reason.startsWith("payer_refused") || reason.startsWith("payer_screening_unavailable"));
-  return ctx.store.addDecision({
-    ...base,
-    ...detail(),
-    status: payerRefused ? "rejected_by_payee" : "failed",
-    error: reason ?? `HTTP ${paid.status}`
-  });
 }

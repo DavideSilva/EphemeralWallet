@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createInterceptaClient, createProfiler, type Address } from "@eaw/risk";
+import { isAddress } from "viem";
+import { createInterceptaClient, createProfiler } from "@eaw/risk";
 import { loadAgentConfig } from "./config";
 import { payUrl } from "./pay";
 import { createStore } from "./store";
@@ -35,11 +36,14 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
     raw += chunk;
   }
   if (!raw) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     throw new BodyError(400, "invalid json");
   }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new BodyError(400, "invalid json");
+  return parsed as Record<string, unknown>;
 }
 
 /** Every mutating route must be a same-origin JSON request from the configured UI. */
@@ -72,7 +76,9 @@ createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/decisions") return json(res, 200, ctx.store.listDecisions());
     if (req.method === "GET" && url.pathname === "/holds") return json(res, 200, ctx.store.listHolds());
     if (req.method === "GET" && url.pathname.startsWith("/profiles/")) {
-      return json(res, 200, await ctx.profiler.getProfile(url.pathname.split("/")[2] as Address));
+      const address = url.pathname.split("/")[2];
+      if (!isAddress(address, { strict: false })) return json(res, 400, { error: "invalid address" });
+      return json(res, 200, await ctx.profiler.getProfile(address));
     }
     if (req.method === "POST" && url.pathname === "/pay") {
       if (!checkMutationGuards(req, res)) return;
@@ -92,7 +98,14 @@ createServer(async (req, res) => {
         });
         return json(res, 200, original);
       }
-      const decision = await payUrl(ctx, resolved.url, resolved.walletKey, { payTo: resolved.payTo, amount: BigInt(resolved.amount) });
+      let decision;
+      try {
+        decision = await payUrl(ctx, resolved.url, resolved.walletKey, { payTo: resolved.payTo, amount: BigInt(resolved.amount) });
+      } catch (error) {
+        // Never strand an approved hold: put it back in the inbox and leave the original decision "held".
+        ctx.store.reopenHold(resolved.id);
+        return json(res, 502, { error: error instanceof Error ? error.message : String(error) });
+      }
       const updated = ctx.store.updateDecision(decision.id, { holdId: resolved.id });
       ctx.store.updateDecision(resolved.decisionId, { status: "superseded", resolvedBy: updated.id });
       return json(res, 200, updated);

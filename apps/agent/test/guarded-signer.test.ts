@@ -15,11 +15,11 @@ const clean: ScreeningResult = {
   unavailable: []
 };
 
-const typedData = (value: bigint, from = WALLET) => ({
+const typedData = (value: bigint, from = WALLET, validBefore = 1_600n) => ({
   domain: { name: "USDC", version: "2", chainId: 84532, verifyingContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" },
   types: {},
   primaryType: "TransferWithAuthorization",
-  message: { from, to: PAYEE, value, validAfter: 0n, validBefore: 1_900_000_000n, nonce: NONCE }
+  message: { from, to: PAYEE, value, validAfter: 0n, validBefore, nonce: NONCE }
 });
 
 function deps(overrides: Partial<GuardDeps> = {}): GuardDeps {
@@ -76,5 +76,20 @@ describe("guarded signer", () => {
     const d = deps();
     await expect(createGuardedSigner(d).signTypedData(typedData(1n, PAYEE))).rejects.toThrow(/not from this wallet/);
     await expect(createGuardedSigner(d).signTypedData({ ...typedData(1n), primaryType: "Permit" })).rejects.toThrow(/unsupported/);
+  });
+
+  it("refuses an authorization valid for more than 15 minutes without screening or approving", async () => {
+    const d = deps();
+    await expect(createGuardedSigner(d).signTypedData(typedData(10_000n, WALLET, 1_000n + 901n))).rejects.toThrow(
+      /authorization validity too long/
+    );
+    expect(d.screen).not.toHaveBeenCalled();
+    expect(d.approve).not.toHaveBeenCalled();
+  });
+
+  it("accepts an authorization valid for exactly 15 minutes", async () => {
+    const d = deps();
+    await createGuardedSigner(d).signTypedData(typedData(10_000n, WALLET, 1_000n + 900n));
+    expect(d.approve).toHaveBeenCalled();
   });
 });

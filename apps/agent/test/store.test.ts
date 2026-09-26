@@ -30,4 +30,15 @@ describe("store", () => {
     expect(store.listDecisions()[0]).toMatchObject({ status: "superseded", resolvedBy: "new-id" });
     expect(() => store.updateDecision("missing", { status: "failed" })).toThrow(/not found/);
   });
+
+  it("reopens an approved hold whose payment attempt crashed", () => {
+    const store = createStore();
+    const hold = store.addHold({ decisionId: "d", url: "u", walletKey: "default", payTo: PAYEE, amount: "300000", reasons: [] });
+    expect(() => store.reopenHold(hold.id)).toThrow(/not approved/);
+    store.resolveHold(hold.id, "approved");
+    store.reopenHold(hold.id);
+    expect(store.getHold(hold.id)?.status).toBe("pending");
+    store.resolveHold(hold.id, "rejected");
+    expect(store.getHold(hold.id)?.status).toBe("rejected");
+  });
 });

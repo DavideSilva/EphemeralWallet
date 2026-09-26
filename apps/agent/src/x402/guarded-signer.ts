@@ -25,6 +25,9 @@ export type GuardDeps = {
   now?: () => bigint;
 };
 
+/** Longest authorization window the agent will approve on-chain (15 minutes). */
+export const MAX_VALIDITY_SECONDS = 900n;
+
 /** 96 bytes: longer than an ECDSA signature so x402 facilitators take the ERC-1271 path. */
 export function encodeWalletSignature(permissionId: bigint, nonce: Hex): Hex {
   return encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }, { type: "bytes32" }], [permissionId, nonce, zeroHash]);
@@ -56,6 +59,8 @@ export function createGuardedSigner(deps: GuardDeps) {
       }
       const auth = parseAuthorization(typedData);
       if (auth.from !== getAddress(deps.wallet)) throw new Error("authorization is not from this wallet");
+      // An approved-but-unsettled authorization outlives a revoke until validBefore: keep that window short.
+      if (auth.validBefore - now() > MAX_VALIDITY_SECONDS) throw new Error("authorization validity too long");
 
       const [screening, permission] = await Promise.all([deps.screen(typedData), deps.readPermission()]);
       const humanApproved =

@@ -60,6 +60,14 @@ export function createStore() {
       hold.status = status;
       return hold;
     },
+    /** Undo an approval whose payment attempt crashed, so the owner can act on the hold again. */
+    reopenHold(id: string): Hold {
+      const hold = holds.get(id);
+      if (!hold) throw new Error("hold not found");
+      if (hold.status !== "approved") throw new Error(`hold is ${hold.status}, not approved`);
+      hold.status = "pending";
+      return hold;
+    },
     listHolds: () => [...holds.values()].reverse(),
     paidBefore: (payTo: Address) =>
       decisions.some(d => d.status === "settled" && d.payTo?.toLowerCase() === payTo.toLowerCase())
