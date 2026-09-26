@@ -27,7 +27,7 @@ npm run demo
 
 1. forks Base Sepolia into Anvil on `127.0.0.1:8545` (chain id 84532, real USDC)
 2. installs `forge-std` if needed
-3. deploys `MissionFactory`, `ReusableWalletFactory` and three demo merchants (Café, Ticket office, Tip jar); the fourth, Mount Fuji Weather, is the x402 weather service
+3. deploys `MissionFactory`, `ReusableWalletFactory` and three demo merchants (teamLab Borderless, JR ticket office, Kawaguchiko ryokan); the fourth, Mount Fuji Weather, is the x402 weather service
 4. creates fresh owner/agent/facilitator/payee keys, funds them, and creates the two x402 demo wallets
 5. starts the x402 service (port 4021), the Mount Fuji weather service (port 4022, a second x402 seller) and the agent daemon (port 4100)
 6. starts the UI at `http://localhost:5173` (cards) and `http://localhost:5173/payments` (x402)
@@ -56,7 +56,7 @@ The check runs in the Vite dev server (`/api/screen/<address>`) through `@eaw/ri
 Each card's page shows the command to run in a second terminal:
 
 ```bash
-npm run agent -- <card> "buy two cinema tickets for tonight"
+npm run agent -- <card> "buy two teamLab Borderless adult tickets"
 ```
 
 `<card>` is the wallet address for a one-time card, or `<wallet>-<id>` for a multi-use card. The agent reads the merchant's on-chain catalog, plans the order, and sends it with the task as the on-chain `memo`.
@@ -81,12 +81,12 @@ A multi-use card can carry plugins that run before every purchase (see `SPEC.md`
 `ApprovalHook`, holds any single purchase above a threshold until you approve that exact purchase:
 
 1. Open the app at `http://localhost:5173` (not `127.0.0.1`: passkeys don't work on IP addresses).
-2. Issue a multi-use card and tick **Ask for my approval before big purchases** (big means over `0.005` by default).
+2. Issue a multi-use card for teamLab Borderless and tick **Ask for my approval before big purchases** (big means over `0.005` by default).
    Leave **Approve with Touch ID** on, then **Review and issue** and issue the card (without `INTERCEPTA_API_KEY` the
    merchant check is "unverified": tick the risk box and **Issue anyway**). The first time, the browser asks you to
    create a passkey. The card shows "Touch ID over 0.005 ETH".
-3. `npm run agent -- <card> "buy one concert ticket"` goes through on its own.
-4. `npm run agent -- <card> "buy 3 concert tickets"` is **Held**. The agent waits (up to 5 minutes) and the card page
+3. `npm run agent -- <card> "buy one adult ticket"` goes through on its own.
+4. `npm run agent -- <card> "buy 3 adult tickets"` is **Held**. The agent waits (up to 5 minutes) and the card page
    shows the purchase, decoded from the agent's order, with **Approve with Touch ID**.
 5. Touch the sensor. The signature is checked on-chain, the agent retries the same order, and it's **Bought**. Activity
    reads *Held → You approved with Touch ID → Bought*.
