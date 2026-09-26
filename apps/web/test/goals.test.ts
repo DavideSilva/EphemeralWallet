@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import { exampleGoal } from "../src/lib/goals";
 
 describe("exampleGoal", () => {
-  it("builds a task from the first catalog item", () => {
-    expect(exampleGoal([{ name: "Child ticket" }, { name: "Adult ticket" }])).toBe("Buy a child ticket");
-    expect(exampleGoal([{ name: "Onsen day pass" }])).toBe("Buy an onsen day pass");
-    expect(exampleGoal([{ name: "Room with Fuji view" }])).toBe("Buy a room with Fuji view");
+  it("asks for two of the first catalog item", () => {
+    expect(exampleGoal([{ name: "Adult ticket" }, { name: "Child ticket" }])).toBe("Buy two adult tickets");
+    expect(exampleGoal([{ name: "Onsen day pass" }])).toBe("Buy two onsen day passes");
+    expect(exampleGoal([{ name: "Art book" }])).toBe("Buy two art books");
+    expect(exampleGoal([{ name: "Kaiseki dinner" }])).toBe("Buy two kaiseki dinners");
   });
 
   it("keeps proper names capitalised", () => {
-    expect(exampleGoal([{ name: "Tokyo Metro day pass" }])).toBe("Buy a Tokyo Metro day pass");
-    expect(exampleGoal([{ name: "Mount Fuji weather report" }])).toBe("Buy a Mount Fuji weather report");
+    expect(exampleGoal([{ name: "Tokyo Metro day pass" }])).toBe("Buy two Tokyo Metro day passes");
+    expect(exampleGoal([{ name: "Mount Fuji weather report" }])).toBe("Buy two Mount Fuji weather reports");
   });
 
   it("falls back without a catalog", () => {

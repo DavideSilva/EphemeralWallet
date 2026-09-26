@@ -15,9 +15,9 @@ contract Deploy is Script {
         ApprovalHook approvalHook = new ApprovalHook();
 
         Merchant.Item[] memory teamLabItems = new Merchant.Item[](3);
-        teamLabItems[0] = Merchant.Item("Child ticket", 0.002 ether);
-        teamLabItems[1] = Merchant.Item("Art book", 0.003 ether);
-        teamLabItems[2] = Merchant.Item("Adult ticket", 0.005 ether);
+        teamLabItems[0] = Merchant.Item("Adult ticket", 0.005 ether);
+        teamLabItems[1] = Merchant.Item("Child ticket", 0.002 ether);
+        teamLabItems[2] = Merchant.Item("Art book", 0.003 ether);
         Merchant teamLab = new Merchant("teamLab Borderless", teamLabItems);
 
         Merchant.Item[] memory railItems = new Merchant.Item[](3);
