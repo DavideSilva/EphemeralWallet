@@ -21,6 +21,15 @@ export function approvalHook(): Address | undefined {
   return value && isAddress(value) ? value : undefined;
 }
 
+/** Base Sepolia USDC: real on npm run demo's fork. Cards for x402 sellers are budgeted and paid in it. */
+export const USDC: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+/** The Mount Fuji weather service's payee, set by npm run demo: a merchant paid over x402 rather than a shop contract. */
+export function weatherPayee(): Address | undefined {
+  const value = import.meta.env.VITE_WEATHER_PAY_TO;
+  return value && isAddress(value) ? value : undefined;
+}
+
 export function contracts() {
   const merchants = (import.meta.env.VITE_MERCHANTS ?? "")
     .split(",")

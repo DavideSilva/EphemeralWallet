@@ -9,7 +9,6 @@ const WALLET = "0x1111111111111111111111111111111111111111";
 const PAYEE = "0x2222222222222222222222222222222222222222";
 const UI = "http://ui.test";
 const SERVICE = "http://service.test";
-const WEATHER = "http://weather.test";
 
 let server: Server | undefined;
 afterEach(() => new Promise<void>(resolve => (server ? server.close(() => resolve()) : resolve())));
@@ -26,7 +25,6 @@ async function start(pay: DaemonDeps["pay"] = vi.fn()) {
       interceptaKey: "k",
       port,
       serviceUrl: SERVICE,
-      weatherUrl: WEATHER,
       uiOrigin: UI,
       wallets: { default: { wallet: WALLET, permissionId: 0n } }
     },
@@ -86,14 +84,6 @@ describe("agent daemon guards", () => {
     const res = await post("/pay", { body: { url: "http://169.254.169.254/latest" } });
     expect(res.status).toBe(400);
     expect(pay).not.toHaveBeenCalled();
-  });
-
-  it("pays the weather service as a second seller", async () => {
-    const pay = vi.fn<DaemonDeps["pay"]>(async ctx => decisionWith(ctx.store, { status: "settled" }));
-    const { post } = await start(pay);
-    const res = await post("/pay", { body: { url: `${WEATHER}/weather/mount-fuji` } });
-    expect(res.status).toBe(200);
-    expect(pay).toHaveBeenCalledWith(expect.anything(), `${WEATHER}/weather/mount-fuji`, "default");
   });
 
   it("answers preflight with 204 and no body", async () => {

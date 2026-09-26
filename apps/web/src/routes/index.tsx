@@ -9,7 +9,8 @@ import { SecurityCard } from "@/components/security-card";
 import { Button } from "@/components/ui/button";
 import { topUp } from "@/lib/actions";
 import type { Snapshot } from "@/lib/data";
-import { eth } from "@/lib/format";
+import { eth, money } from "@/lib/format";
+import { USDC } from "@/lib/config";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -103,7 +104,10 @@ function AccountPanel({ account }: { account: Snapshot["account"] }) {
     <div className="flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3">
       <div>
         <div className="text-xs text-muted-foreground">Account for multi-use cards</div>
-        <div className="font-display text-2xl">{eth(account.balance)} ETH</div>
+        <div className="font-display text-2xl">
+          {eth(account.balance)} ETH
+          {account.usdc > 0n && <span className="text-muted-foreground"> · {money(account.usdc, USDC)}</span>}
+        </div>
       </div>
       <Button size="sm" variant="outline" onClick={addFunds} disabled={busy}>
         {busy ? "Adding…" : "Add 0.01 ETH"}

@@ -22,6 +22,8 @@ export type Decision = {
   /** Unix seconds; set once the agent approved an authorization. */
   validBefore?: string;
   settleTx?: string;
+  /** What the seller returned for a settled payment (its JSON body), when there was one. */
+  resource?: unknown;
   error?: string;
   holdId?: string;
   resolvedBy?: string;

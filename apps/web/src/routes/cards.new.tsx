@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { isAddress, parseEther, zeroAddress, type Address } from "viem";
+import { erc20Abi, isAddress, parseUnits, zeroAddress, type Address } from "viem";
 import { useConnection } from "wagmi";
 import { MerchantCheck } from "@/components/merchant-check";
 import { SecurityCard } from "@/components/security-card";
@@ -24,7 +24,7 @@ import { issueCard } from "@/lib/actions";
 import { publicClient } from "@/lib/chain";
 import { approvalHook, DEFAULT_AGENT } from "@/lib/config";
 import type { CardKind } from "@/lib/data";
-import { eth, shortAddress } from "@/lib/format";
+import { eth, money, shortAddress, unit } from "@/lib/format";
 import { saveGoal } from "@/lib/goals";
 import { forgetPasskey, passkeysSupported, storedPasskey } from "@/lib/passkey";
 import { useMerchants, useSnapshot } from "@/lib/hooks";
@@ -52,9 +52,10 @@ const kinds: { value: CardKind; title: string; body: string }[] = [
   },
 ];
 
-function parseAmount(value: string): bigint | null {
+/** ETH (18 decimals) unless `asset` is set: then a 6-decimal token (USDC). */
+function parseAmount(value: string, asset?: Address): bigint | null {
   try {
-    const amount = parseEther(value.trim() as `${number}`);
+    const amount = parseUnits(value.trim() as `${number}`, asset ? 6 : 18);
     return amount > 0n ? amount : null;
   } catch {
     return null;
@@ -96,19 +97,22 @@ function IssueCard() {
   const isCustom = merchant === "custom";
   const chosenMerchant = isCustom ? customMerchant.trim() : merchant || merchants?.[0]?.address || "";
   const merchantReady = isAddress(chosenMerchant);
-  const merchantName = merchants?.find(m => m.address.toLowerCase() === chosenMerchant.toLowerCase())?.name;
+  const chosen = merchants?.find(m => m.address.toLowerCase() === chosenMerchant.toLowerCase());
+  const merchantName = chosen?.name;
+  // An x402 seller: the card pays it in USDC over HTTP, so it's multi-use and budgeted in USDC.
+  const asset = chosen?.asset;
   const screening = useScreening(merchantReady ? chosenMerchant : undefined);
   const { data: hasShop } = useQuery({
     queryKey: ["has-shop", chosenMerchant.toLowerCase()],
     queryFn: async () => Boolean(await publicClient.getCode({ address: chosenMerchant as Address })),
     enabled: isCustom && merchantReady,
   });
-  const budgetWei = parseAmount(budget);
+  const budgetWei = parseAmount(budget, asset);
   const fundingWei = parseAmount(funding);
   const maxUses = kind === "one-time" ? 1 : Number(uses);
   const needsAccount = kind === "multi-use" && snapshot?.account === null;
   const accountBalance = snapshot?.account?.balance ?? 0n;
-  const canRequireApproval = kind === "multi-use" && Boolean(approvalHook());
+  const canRequireApproval = kind === "multi-use" && !asset && Boolean(approvalHook());
   const approvalThreshold = canRequireApproval && requireApproval ? parseAmount(approvalOver) : undefined;
 
   const errors = {
@@ -122,7 +126,14 @@ function IssueCard() {
     funding: needsAccount && fundingWei === null ? "Enter an amount above 0" : undefined,
     approval: approvalThreshold === null ? "Enter an amount above 0, like 0.005" : undefined,
   };
-  const valid = !Object.values(errors).some(Boolean) && merchantReady && Boolean(owner);
+  // A USDC card's budget comes from the owner's wallet (npm run demo gives it USDC on the fork).
+  const { data: ownerUsdc } = useQuery({
+    queryKey: ["owner-usdc", owner, asset],
+    queryFn: () => publicClient.readContract({ address: asset!, abi: erc20Abi, functionName: "balanceOf", args: [owner!] }),
+    enabled: Boolean(asset && owner),
+  });
+  const usdcShort = asset && budgetWei !== null && ownerUsdc !== undefined && budgetWei > ownerUsdc;
+  const valid = !Object.values(errors).some(Boolean) && merchantReady && Boolean(owner) && !usdcShort;
 
   const issue = useMutation({
     mutationFn: () =>
@@ -130,6 +141,7 @@ function IssueCard() {
         kind,
         owner: owner!,
         merchant: chosenMerchant as Address,
+        asset,
         agent: agent as Address,
         budget: budgetWei!,
         maxUses,
@@ -159,7 +171,7 @@ function IssueCard() {
   }
 
   const shortfall =
-    kind === "multi-use" && !needsAccount && budgetWei !== null && budgetWei > accountBalance
+    kind === "multi-use" && !asset && !needsAccount && budgetWei !== null && budgetWei > accountBalance
       ? `Your account holds ${eth(accountBalance)} ETH, less than this budget. Purchases will fail once it runs dry, so add funds from the home page.`
       : undefined;
 
@@ -185,10 +197,17 @@ function IssueCard() {
                   kind === option.value && "border-intaglio ring-1 ring-intaglio",
                 )}
               >
-                <RadioGroupItem id={`kind-${option.value}`} value={option.value} className="mt-0.5" />
+                <RadioGroupItem
+                  id={`kind-${option.value}`}
+                  value={option.value}
+                  className="mt-0.5"
+                  disabled={option.value === "one-time" && Boolean(asset)}
+                />
                 <span>
                   <span className="block font-semibold">{option.title}</span>
-                  <span className="mt-1 block text-sm leading-snug text-muted-foreground">{option.body}</span>
+                  <span className="mt-1 block text-sm leading-snug text-muted-foreground">
+                    {option.value === "one-time" && asset ? `Not for ${merchantName}: it's paid in USDC over x402.` : option.body}
+                  </span>
                 </span>
               </Label>
             ))}
@@ -200,8 +219,13 @@ function IssueCard() {
           {merchantsError && <p className="text-sm text-void">Couldn't load merchants. Is the demo running?</p>}
           <RadioGroup
             value={isCustom ? "custom" : chosenMerchant}
-            onValueChange={value => setMerchant(value as Address | "custom")}
-            className="grid gap-3 sm:grid-cols-3"
+            onValueChange={value => {
+              const next = merchants?.find(m => m.address === value);
+              if (Boolean(next?.asset) !== Boolean(asset)) setBudget(next?.asset ? "0.05" : "0.005");
+              if (next?.asset) setKind("multi-use");
+              setMerchant(value as Address | "custom");
+            }}
+            className="grid gap-3 sm:grid-cols-2"
           >
             {merchants?.map(m => (
               <Label
@@ -215,16 +239,21 @@ function IssueCard() {
                 <span className="flex items-center gap-2">
                   <RadioGroupItem id={`merchant-${m.address}`} value={m.address} />
                   <span className="font-display text-xl leading-none">{m.name}</span>
+                  {m.asset && (
+                    <span className="shrink-0 rounded-full border border-current/30 px-1.5 py-px text-[0.65rem] font-medium whitespace-nowrap text-intaglio">
+                      x402 · USDC
+                    </span>
+                  )}
                 </span>
                 <span className="text-xs leading-relaxed text-muted-foreground">
-                  {m.items.map(item => `${item.name} ${eth(item.price)}`).join(", ")}
+                  {m.items.map(item => `${item.name} ${money(item.price, m.asset)}`).join(", ")}
                 </span>
               </Label>
             ))}
             <Label
               htmlFor="merchant-custom"
               className={cn(
-                "flex cursor-pointer flex-col items-start gap-2 rounded-xl border border-dashed border-input bg-card p-4 font-normal transition-colors sm:col-span-3",
+                "flex cursor-pointer flex-col items-start gap-2 rounded-xl border border-dashed border-input bg-card p-4 font-normal transition-colors sm:col-span-2",
                 isCustom && "border-solid border-intaglio ring-1 ring-intaglio",
               )}
             >
@@ -264,7 +293,12 @@ function IssueCard() {
 
         <fieldset className="grid gap-5 sm:grid-cols-3">
           <legend className="mb-3 font-semibold">Limits</legend>
-          <Field label="Budget (ETH)" htmlFor="budget" error={submitted ? errors.budget : undefined}>
+          <Field
+            label={`Budget (${unit(asset)})`}
+            htmlFor="budget"
+            error={submitted ? errors.budget : undefined}
+            hint={asset ? "Moves from your wallet into your account when the card is issued." : undefined}
+          >
             <Input id="budget" inputMode="decimal" value={budget} onChange={e => setBudget(e.target.value)} className="bg-card" />
           </Field>
           {kind === "multi-use" && (
@@ -387,6 +421,11 @@ function IssueCard() {
           </Field>
         )}
         {shortfall && <p className="rounded-lg bg-intaglio/10 p-3 text-sm text-intaglio">{shortfall}</p>}
+        {usdcShort && (
+          <p className="rounded-lg bg-void/10 p-3 text-sm text-void">
+            Your wallet holds {money(ownerUsdc!, asset)}, less than this budget. Lower the budget to issue the card.
+          </p>
+        )}
 
         <Button type="submit" size="lg">
           Review and issue
@@ -402,6 +441,7 @@ function IssueCard() {
               id: `preview-${kind}-${chosenMerchant || "custom"}`,
               kind,
               merchant: merchantReady ? (chosenMerchant as Address) : zeroAddress,
+              asset,
               maxSpend: budgetWei ?? 0n,
               spent: 0n,
               maxUses: Number.isFinite(maxUses) && maxUses > 0 ? maxUses : 1,
@@ -420,7 +460,8 @@ function IssueCard() {
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display text-3xl font-normal">Issue this card?</AlertDialogTitle>
             <AlertDialogDescription>
-              The agent can spend up to {budgetWei ? eth(budgetWei) : "0"} ETH at this merchant, and only there.
+              The agent can spend up to {money(budgetWei ?? 0n, asset)} at this merchant, and only there.
+              {asset && " It pays over x402, and Intercepta screens every payment before the card approves it."}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -431,6 +472,7 @@ function IssueCard() {
                   id: `preview-${kind}-${chosenMerchant}`,
                   kind,
                   merchant: merchantReady ? (chosenMerchant as Address) : zeroAddress,
+                  asset,
                   maxSpend: budgetWei ?? 0n,
                   spent: 0n,
                   maxUses: Number.isFinite(maxUses) && maxUses > 0 ? maxUses : 1,

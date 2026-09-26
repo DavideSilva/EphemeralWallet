@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
 import type { InterceptaClient, Profiler, ScreeningResult } from "@eaw/risk";
-import { payUrl, type PayContext } from "../src/x402/pay";
+import { payFromWallet, payUrl, type PayContext } from "../src/x402/pay";
 import { createStore } from "../src/x402/store";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
@@ -54,7 +54,6 @@ function ctx(): PayContext {
       interceptaKey: "k",
       port: 0,
       serviceUrl: "http://service.test",
-      weatherUrl: "http://weather.test",
       uiOrigin: "http://ui.test",
       wallets: { default: { wallet: WALLET, permissionId: 1n } }
     },
@@ -118,11 +117,35 @@ describe("payUrl", () => {
     expect(c.store.paidBefore(PAYEE)).toBe(false);
   });
 
-  it("records a settled payment", async () => {
-    vi.stubGlobal("fetch", service("10000", () => new Response("{}", { status: 200 })));
+  it("records a settled payment with what the seller returned", async () => {
+    vi.stubGlobal("fetch", service("10000", () => new Response('{"report":"clear"}', { status: 200 })));
     const c = ctx();
     const decision = await payUrl(c, "http://service.test/dataset", "default");
-    expect(decision.status).toBe("settled");
+    expect(decision).toMatchObject({ status: "settled", resource: { report: "clear" } });
     expect(c.store.paidBefore(PAYEE)).toBe(true);
+  });
+});
+
+describe("payFromWallet (a card paying an x402 seller)", () => {
+  const card = { ref: { wallet: WALLET as `0x${string}`, permissionId: 2n }, agent: "0x3333333333333333333333333333333333333333" as const };
+  const cardCtx = () => {
+    const { config, ...rest } = ctx();
+    return { ...rest, rpcUrl: config.rpcUrl };
+  };
+
+  it("records a HOLD without queuing it, since no daemon wallet can resume it", async () => {
+    vi.stubGlobal("fetch", service("300000", () => new Response(null, { status: 500 })));
+    const c = cardCtx();
+    const decision = await payFromWallet(c, "http://weather.test/weather/mount-fuji", card);
+    expect(decision).toMatchObject({ status: "held", permissionId: "2" });
+    expect(decision.holdId).toBeUndefined();
+    expect(c.store.listHolds()).toEqual([]);
+    expect(chain.approve).not.toHaveBeenCalled();
+  });
+
+  it("pays a clean seller from the card's permission", async () => {
+    vi.stubGlobal("fetch", service("10000", () => new Response("{}", { status: 200 })));
+    const decision = await payFromWallet(cardCtx(), "http://weather.test/weather/mount-fuji", card);
+    expect(decision).toMatchObject({ status: "settled", wallet: WALLET, permissionId: "2", approveTx: "0xabc" });
   });
 });

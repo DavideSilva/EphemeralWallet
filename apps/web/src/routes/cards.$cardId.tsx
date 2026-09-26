@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { approvalChallenge, approvePurchase, approveWithPasskey, cancelCard, reclaimCard } from "@/lib/actions";
 import { describePurchase, type Activity, type Card, type Held, type Snapshot } from "@/lib/data";
-import { agentCommand, eth, shortAddress, time, validity } from "@/lib/format";
+import { agentCommand, amount, eth, money, shortAddress, time, unit, validity } from "@/lib/format";
 import { savedGoal, saveGoal } from "@/lib/goals";
 import { useMerchant, useMerchants } from "@/lib/hooks";
 import { storedPasskey } from "@/lib/passkey";
@@ -80,7 +80,9 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
             <p className="mt-2 text-muted-foreground">
               {card.kind === "one-time"
                 ? "A one-time card with its own wallet. After one purchase it's used up, and the rest can come back to you."
-                : "A multi-use card that draws from your account. Its agent can keep buying until a limit runs out."}
+                : card.asset
+                  ? "A multi-use card that pays this seller in USDC over x402. Before every payment the agent checks the seller, the token and the exact payment with Intercepta; the card then enforces the limits on-chain."
+                  : "A multi-use card that draws from your account. Its agent can keep buying until a limit runs out."}
             </p>
           </div>
 
@@ -130,7 +132,8 @@ function Limits({ card }: { card: Card }) {
   return (
     <div className="space-y-3">
       <div className="grid gap-5 rounded-xl border border-border bg-card p-5 sm:grid-cols-3">
-        <Meter label={`${eth(card.spent)} of ${eth(card.maxSpend)} ETH spent`} value={Number(card.spent)} max={Number(card.maxSpend)} />
+        <Meter
+          label={`${amount(card.spent, card.asset)} of ${amount(card.maxSpend, card.asset)} ${unit(card.asset)} spent`} value={Number(card.spent)} max={Number(card.maxSpend)} />
         <Meter label={`${card.uses} of ${card.maxUses} ${card.maxUses === 1 ? "use" : "uses"}`} value={card.uses} max={card.maxUses} />
         <Meter
           label={card.status === "active" || card.status === "expired" ? validity(card.expiresAt) : "No longer usable"}
@@ -274,7 +277,7 @@ function Catalog({ merchant: address }: { merchant: string }) {
         {merchant.items.map(item => (
           <li key={item.name} className="flex justify-between py-2">
             <span>{item.name}</span>
-            <span className="text-muted-foreground">{eth(item.price)} ETH</span>
+            <span className="text-muted-foreground">{money(item.price, merchant.asset)}</span>
           </li>
         ))}
       </ul>

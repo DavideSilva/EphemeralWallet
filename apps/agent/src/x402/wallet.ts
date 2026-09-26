@@ -1,15 +1,15 @@
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { createPublicClient, createWalletClient, http, type Account, type Address, type Hex } from "viem";
 import { baseSepolia } from "viem/chains";
 import type { PermissionState } from "@eaw/risk";
 import { erc20Abi, reusableWalletAbi } from "../../../../packages/shared/src/abi";
 import type { WalletRef } from "./config";
 import type { Authorization } from "./guarded-signer";
 
-export function createWalletGateway(rpcUrl: string, agentKey: Hex, ref: WalletRef) {
+/** `agent` is a local account (the daemon's key) or an address the node signs for (an unlocked Anvil account). */
+export function createWalletGateway(rpcUrl: string, agent: Account | Address, ref: WalletRef) {
   const transport = http(rpcUrl);
   const publicClient = createPublicClient({ chain: baseSepolia, transport });
-  const walletClient = createWalletClient({ account: privateKeyToAccount(agentKey), chain: baseSepolia, transport });
+  const walletClient = createWalletClient({ account: agent, chain: baseSepolia, transport });
 
   return {
     async readPermission(): Promise<PermissionState> {

@@ -20,7 +20,7 @@ try {
 const rpc = "http://127.0.0.1:8545";
 const forkUrl = process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
 const usdc = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-// Anvil dev account #0 only deploys the factory. It is never screened: Intercepta
+// Anvil dev account #0 deploys the factory and is the UI's card owner. It is never screened: Intercepta
 // rejects the well-known dev addresses ("Externally Owned Account ... doesn't exist"),
 // so every screened identity gets a fresh key per run.
 const deployer = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -146,6 +146,8 @@ try {
     await rpcCall("anvil_setBalance", [accounts[role].address, "0x56BC75E2D63100000"]); // 100 ETH
   }
   await rpcCall("anvil_dealERC20", [accounts.owner.address, usdc, "0x989680"]);
+  // The UI signs as the deployer: 10 USDC funds the budgets of cards for the weather service (an x402 merchant).
+  await rpcCall("anvil_dealERC20", [deployer, usdc, "0x989680"]);
 
   const env = {
     ...process.env,
@@ -207,7 +209,8 @@ try {
     VITE_FACTORY: missionFactory,
     VITE_REUSABLE_FACTORY: factory,
     VITE_APPROVAL_HOOK: approvalHook,
-    VITE_MERCHANTS: merchants.join(",")
+    VITE_MERCHANTS: merchants.join(","),
+    VITE_WEATHER_PAY_TO: accounts.weatherPayee.address
   };
   start("web", "npm", ["run", "web"], webEnv).on("exit", () => { stop(); process.exit(0); });
 } catch (error) {

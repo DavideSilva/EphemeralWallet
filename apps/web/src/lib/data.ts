@@ -7,12 +7,17 @@ import {
   reusableFactoryAbi,
   reusableWalletAbi,
 } from "@shared/abis";
+import { erc20Abi } from "@shared/abi";
 import { APPROVAL_WAIT_SECONDS } from "@shared/approval";
 import { decodePurchase, decodeRevert, describeRevert, revertData } from "@shared/revert";
 import { publicClient } from "./chain";
-import { approvalHook, contracts, FROM_BLOCK } from "./config";
+import { approvalHook, contracts, FROM_BLOCK, USDC, weatherPayee } from "./config";
 
-export type Merchant = { address: Address; name: string; items: readonly { name: string; price: bigint }[] };
+/**
+ * A shop contract the agent calls with ETH, or (`asset` set) an x402 seller: `address` is then the seller's payee
+ * and the agent pays it in that token over HTTP, screened by Intercepta before the card approves each payment.
+ */
+export type Merchant = { address: Address; name: string; items: readonly { name: string; price: bigint }[]; asset?: Address };
 
 export type CardKind = "one-time" | "multi-use";
 export type CardStatus = "active" | "used" | "expired" | "cancelled";
@@ -24,6 +29,8 @@ export type Card = {
   permissionId?: bigint;
   agent: Address;
   merchant: Address;
+  /** Set for cards that pay in a token (USDC, for x402 sellers); unset means ETH. */
+  asset?: Address;
   maxSpend: bigint;
   spent: bigint;
   maxUses: number;
@@ -66,13 +73,15 @@ export type Activity = {
   position: number;
   hash: Hex;
   value?: bigint;
+  /** The token `value` is in; unset means ETH. */
+  asset?: Address;
   memo?: string;
   summary?: string;
   reason?: string;
   held?: Held;
 };
 
-export type Account = { address: Address; balance: bigint };
+export type Account = { address: Address; balance: bigint; usdc: bigint };
 
 export type Snapshot = {
   owner: Address;
@@ -94,7 +103,7 @@ function status(card: Omit<Card, "status">, now: number): CardStatus {
 }
 
 export async function fetchMerchants(): Promise<Merchant[]> {
-  return Promise.all(
+  const shops = await Promise.all(
     contracts().merchants.map(async address => {
       const [name, items] = await Promise.all([
         publicClient.readContract({ address, abi: merchantAbi, functionName: "name" }),
@@ -103,6 +112,18 @@ export async function fetchMerchants(): Promise<Merchant[]> {
       return { address, name, items };
     }),
   );
+  const payee = weatherPayee();
+  // The price is apps/weather's ($0.01); the agent reads the live one from the service's 402 response.
+  const weather: Merchant[] = payee
+    ? [{ address: payee, name: "Mount Fuji Weather", items: [{ name: "Mount Fuji weather report", price: 10_000n }], asset: USDC }]
+    : [];
+  return [...shops, ...weather];
+}
+
+/** What an x402 payment bought: the seller's item at that price, if it matches one. */
+function describePayment(merchants: Merchant[], payTo: Address, value: bigint): string | undefined {
+  const seller = merchants.find(m => m.asset && m.address.toLowerCase() === payTo.toLowerCase());
+  return seller?.items.find(item => item.price === value)?.name;
 }
 
 export function describePurchase(merchants: Merchant[], merchant: Address, data: Hex): string | undefined {
@@ -249,7 +270,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
   const account = accountAddress === zeroAddress ? null : accountAddress;
   const missionWallets = missionLogs.map(log => log.args.wallet!);
 
-  const [missionEvents, missionFlags, accountEvents, accountBalance, permissionCount] = await Promise.all([
+  const [missionEvents, missionFlags, accountEvents, accountBalance, accountUsdc, permissionCount] = await Promise.all([
     missionWallets.length
       ? publicClient.getContractEvents({ address: missionWallets, abi: missionWalletAbi, fromBlock: FROM_BLOCK, toBlock })
       : Promise.resolve([]),
@@ -266,6 +287,12 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
       ? publicClient.getContractEvents({ address: account, abi: reusableWalletAbi, fromBlock: FROM_BLOCK, toBlock })
       : Promise.resolve([]),
     account ? publicClient.getBalance({ address: account, blockNumber: toBlock }) : Promise.resolve(0n),
+    // No USDC contract on a plain Anvil chain (only on the Base Sepolia fork): read that as none.
+    account
+      ? publicClient
+          .readContract({ address: USDC, abi: erc20Abi, functionName: "balanceOf", args: [account], blockNumber: toBlock })
+          .catch(() => 0n)
+      : Promise.resolve(0n),
     account
       ? publicClient.readContract({
           address: account,
@@ -355,7 +382,6 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
   if (account) {
     const created = accountEvents.filter(e => e.eventName === "PermissionCreated");
     permissions.forEach(([agent, allowedTarget, maxSpend, spent, expiresAt, maxUses, uses, revoked, asset], i) => {
-      if (asset !== zeroAddress) return; // USDC (x402) payment permissions aren't merchant cards
       const id = cardId(account, BigInt(i));
       const log = created.find(e => e.eventName === "PermissionCreated" && e.args.permissionId === BigInt(i));
       const base = {
@@ -365,6 +391,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
         permissionId: BigInt(i),
         agent,
         merchant: allowedTarget,
+        asset: asset === zeroAddress ? undefined : asset,
         maxSpend,
         spent,
         maxUses,
@@ -416,11 +443,24 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
       hash: log.transactionHash,
     };
     if (log.eventName === "PermissionCreated") {
+      const asset = permissions[Number(log.args.permissionId)]?.[8];
       activity.push({
         ...common,
         kind: "issued",
         cardId: cardId(account!, log.args.permissionId),
         value: log.args.maxSpend,
+        asset: asset && asset !== zeroAddress ? asset : undefined,
+      });
+    } else if (log.eventName === "PaymentApproved") {
+      // An x402 card's purchase: the card approved this exact USDC payment, which the seller then settles.
+      const asset = permissions[Number(log.args.permissionId)]?.[8];
+      activity.push({
+        ...common,
+        kind: "purchase",
+        cardId: cardId(account!, log.args.permissionId),
+        value: log.args.amount,
+        asset: asset && asset !== zeroAddress ? asset : undefined,
+        summary: describePayment(merchants, log.args.payTo!, log.args.amount!),
       });
     } else if (log.eventName === "Executed") {
       activity.push({
@@ -453,7 +493,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
 
   return {
     owner,
-    account: account ? { address: account, balance: accountBalance } : null,
+    account: account ? { address: account, balance: accountBalance, usdc: accountUsdc } : null,
     cards,
     activity,
   };

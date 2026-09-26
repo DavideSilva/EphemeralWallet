@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Ban, BadgeCheck, Hourglass, ShieldX, ShoppingBag, Stamp, Undo2 } from "lucide-react";
 import type { Activity, Card } from "@/lib/data";
-import { dayLabel, eth, shortAddress, time } from "@/lib/format";
+import { amount as formatAmount, dayLabel, money, shortAddress, time, unit } from "@/lib/format";
 import { useMerchants } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
@@ -93,19 +93,19 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
     item.kind === "blocked"
       ? `Agent tried ${item.summary ?? "a purchase"} at ${merchant}`
       : item.kind === "cancelled" && item.value
-        ? `${eth(item.value)} ETH refunded`
+        ? `${money(item.value, item.asset)} refunded`
         : item.kind === "issued" && item.value !== undefined
-          ? `Budget ${eth(item.value)} ETH`
+          ? `Budget ${money(item.value, item.asset)}`
           : undefined;
 
   const amount =
     item.value === undefined || item.kind === "issued"
       ? null
       : item.kind === "purchase"
-        ? `−${eth(item.value)}`
+        ? `−${formatAmount(item.value, item.asset)}`
         : item.kind === "blocked" || item.kind === "approved"
-          ? eth(item.value)
-          : `+${eth(item.value)}`;
+          ? formatAmount(item.value, item.asset)
+          : `+${formatAmount(item.value, item.asset)}`;
 
   const row = (
     <div className="grid grid-cols-[2.75rem_1.75rem_1fr_auto] items-start gap-x-3 py-3.5">
@@ -139,7 +139,7 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
           )}
         >
           <span className={cn(blocked && "line-through")}>{amount}</span>{" "}
-          <span className="text-xs text-muted-foreground">ETH</span>
+          <span className="text-xs text-muted-foreground">{unit(item.asset)}</span>
         </span>
       )}
     </div>

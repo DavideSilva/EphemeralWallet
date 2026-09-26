@@ -28,7 +28,9 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
   loop, hold queue, daemon).
 - `apps/service` — x402 express server, in-process facilitator, payer gate (`onBeforeVerify`).
 - `apps/weather` — second x402 seller (Mount Fuji report, no payer screening). In-process facilitator when
-  `WEATHER_FACILITATOR_PRIVATE_KEY` is set (the demo does), else the public x402.org facilitator.
+  `WEATHER_FACILITATOR_PRIVATE_KEY` is set (the demo does), else the public x402.org facilitator. It's also a card
+  merchant: the web app lists it from `VITE_WEATHER_PAY_TO` (a USDC permission, `asset` set), and `npm run agent` pays
+  USDC cards through `apps/agent/src/x402-card.ts` (the same screened `payFromWallet` loop as the daemon).
 - `apps/web` — TanStack Router + wagmi + shadcn/ui; the x402 page is `src/routes/payments.tsx`. `server/screening.ts` is a
   Vite dev-server endpoint (`/api/screen/:address`, loopback only) that screens a card's merchant via `@eaw/risk` in the
   issue-card dialog; any failure reads as unverified, never trusted.
@@ -44,7 +46,7 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 - Intercepta 404s Anvil's well-known dev addresses, so anything that gets screened (owner, agent, payee) must use a
   fresh key; `npm run demo` generates them per run.
 - The agent daemon is localhost-only and hardened (loopback `Host` only, writes need JSON plus the UI's exact `Origin`,
-  `/pay` limited to the service and weather origins, 64 KiB bodies). Handler lives in `apps/agent/src/x402/daemon-handler.ts` (tested);
+  `/pay` limited to the service origin, 64 KiB bodies). Handler lives in `apps/agent/src/x402/daemon-handler.ts` (tested);
   `daemon.ts` only wires it up. Keep it that way.
 - The service's payer gate pre-verifies the payment signature before screening, so garbage payloads cost no
   Intercepta quota. Keep the pre-verify first.

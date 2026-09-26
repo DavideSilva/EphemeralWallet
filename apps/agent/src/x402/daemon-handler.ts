@@ -97,9 +97,7 @@ export function createDaemonHandler(deps: DaemonDeps) {
         if (!checkMutationGuards(req, res)) return;
         const body = await readBody(req);
         const target = String(body.url ?? `${config.serviceUrl}/dataset`);
-        if (![config.serviceUrl, config.weatherUrl].some(seller => sameOrigin(target, seller))) {
-          return json(res, 400, { error: "url must be on the configured service or weather service" });
-        }
+        if (!sameOrigin(target, config.serviceUrl)) return json(res, 400, { error: "url must be on the configured service" });
         return json(res, 200, await deps.pay(deps, target, body.wallet === "risky" ? "risky" : "default"));
       }
       const hold = url.pathname.match(/^\/holds\/([^/]+)\/(approve|reject)$/);
