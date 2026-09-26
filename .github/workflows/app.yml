@@ -28,3 +28,4 @@ jobs:
       - run: npm test
       - run: npm --workspace @eaw/web run build
       - run: npm --workspace @eaw/agent run typecheck
+      - run: npm --workspace @eaw/weather run typecheck

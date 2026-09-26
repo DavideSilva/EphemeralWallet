@@ -169,6 +169,16 @@ CI (`.github/workflows`) runs the same: `npm test`, the web build, the agent typ
 If the web app crashes on start after pulling (for example a React version error), an old untracked
 `package-lock.json` is likely pinning stale dependencies: `rm -rf node_modules package-lock.json && npm install`.
 
+## Mount Fuji weather over x402
+
+A mock web service that sells a Mount Fuji weather report behind [x402](https://x402.org). Set `WEATHER_PAY_TO` to the address that receives payments, then:
+
+```bash
+npm run weather
+```
+
+`GET http://localhost:4021/weather/mount-fuji` answers `402 Payment Required` until the request carries an x402 payment of $0.01 in USDC on Base Sepolia, settled through the public facilitator at `https://x402.org/facilitator`. Any x402 client can pay it. The report is mock data. `WEATHER_PRICE`, `WEATHER_NETWORK`, `WEATHER_FACILITATOR_URL` and `WEATHER_PORT` override the defaults.
+
 ## Structure
 
 - `SPEC.md`: source of truth for contract behavior
@@ -177,6 +187,7 @@ If the web app crashes on start after pulling (for example a React version error
 - `packages/risk`: Intercepta API client, wallet/counterparty profiling, PAY/CAP/HOLD/REFUSE policy (`@eaw/risk`)
 - `apps/agent`: agent CLI with the Claude and offline planners; also the x402 pay loop, hold queue and daemon API (`src/x402/`)
 - `apps/service`: x402-paid API with an Intercepta payer gate in front of its facilitator
+- `apps/weather`: mock x402 service selling Mount Fuji weather reports
 - `apps/web`: React app (TanStack Router and Query, wagmi, shadcn/ui) for cards and activity, plus the x402 payments page (`/payments`)
 - `scripts/demo.mjs`: local demo orchestrator; `scripts/x402-local.mjs`: x402 demo on an Anvil fork of Base Sepolia
 
