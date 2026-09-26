@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 // Runs the whole demo (cards + x402 + Intercepta) on a local Anvil fork of Base Sepolia:
@@ -7,6 +9,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 // INTERCEPTA_API_KEY it fails closed (payments refused, merchants unverified).
 //   npm run demo                   start chain, service, agent daemon and UI
 //   npm run demo -- --scenarios    also run the scripted four-scenario x402 demo
+//   npm run demo -- --no-touch-id  don't wait for a passkey; the payment wallet is created unprotected
 
 // Load .env before reading any config from it. A missing file is fine; anything else
 // (such as Node < 20.12 without process.loadEnvFile) must not silently drop the key.
@@ -56,6 +59,53 @@ async function rpcIsRunning() {
   } catch {
     return false;
   }
+}
+
+const uiOrigin = process.env.AGENT_UI_ORIGIN ?? "http://localhost:5173";
+const enrollPort = Number(process.env.ENROLL_PORT ?? 4199);
+const ENROLL_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * Waits for the owner to enroll their passkey from /payments before the payment wallet is set up, so its permission
+ * is created with the approval plugin from the start (no unprotected permission ever exists). A one-shot, loopback,
+ * JSON-only endpoint that only accepts the UI's Origin; the RP ID hash is derived here from the UI's hostname.
+ */
+function waitForPasskey() {
+  return new Promise((resolve, reject) => {
+    const cors = { "access-control-allow-origin": uiOrigin, "access-control-allow-headers": "content-type", vary: "origin" };
+    const reply = (res, status, body) => {
+      res.writeHead(status, { ...cors, "content-type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    const server = createServer((req, res) => {
+      if (req.headers.origin !== uiOrigin) return reply(res, 403, { error: "origin not allowed" });
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, { ...cors, "access-control-allow-methods": "GET, POST" });
+        return res.end();
+      }
+      if (req.method === "GET" && req.url === "/status") return reply(res, 200, { waiting: true });
+      if (req.method !== "POST" || req.url !== "/passkey") return reply(res, 404, { error: "not found" });
+      if (!(req.headers["content-type"] ?? "").startsWith("application/json")) return reply(res, 415, { error: "json only" });
+      let body = "";
+      req.on("data", chunk => { body += chunk; if (body.length > 4096) req.destroy(); });
+      req.on("end", () => {
+        let publicKey;
+        try { publicKey = JSON.parse(body).publicKey; } catch {}
+        if (typeof publicKey !== "string" || !/^0x[0-9a-fA-F]{128}$/.test(publicKey)) return reply(res, 400, { error: "publicKey must be 64 bytes of hex" });
+        reply(res, 200, { enrolled: true });
+        clearTimeout(timer);
+        server.close();
+        const rpIdHash = "0x" + createHash("sha256").update(new URL(uiOrigin).hostname).digest("hex");
+        resolve({ x: publicKey.slice(0, 66), y: "0x" + publicKey.slice(66), rpIdHash });
+      });
+    });
+    const timer = setTimeout(() => {
+      server.close();
+      reject(new Error("No passkey was enrolled within 10 minutes. Run npm run demo again, or npm run demo -- --no-touch-id."));
+    }, ENROLL_TIMEOUT_MS);
+    server.on("error", reject);
+    server.listen(enrollPort, "127.0.0.1");
+  });
 }
 
 async function waitFor(check, what) {
@@ -138,6 +188,29 @@ try {
   }
   await rpcCall("anvil_dealERC20", [accounts.owner.address, usdc, "0x989680"]);
 
+  const touchId = !process.argv.includes("--no-touch-id");
+  // The UI starts before the payment wallet exists: /payments is where the owner enrolls Touch ID for it.
+  const webEnv = {
+    ...process.env,
+    VITE_CHAIN_ID: "84532",
+    VITE_FROM_BLOCK: fromBlock.toString(),
+    VITE_FACTORY: missionFactory,
+    VITE_REUSABLE_FACTORY: factory,
+    VITE_APPROVAL_HOOK: approvalHook,
+    VITE_MERCHANTS: merchants.join(","),
+    ...(touchId ? { VITE_ENROLL_URL: `http://localhost:${enrollPort}` } : {})
+  };
+  start("web", "npm", ["run", "web"], webEnv).on("exit", () => { stop(); process.exit(0); });
+
+  let passkey;
+  if (touchId) {
+    const waiting = waitForPasskey();
+    console.log(`\nProtect the agent's payments: open ${uiOrigin}/payments and click "Protect payments with Touch ID".`);
+    console.log("Setup continues once you've tapped Touch ID (or run with --no-touch-id to skip).\n");
+    passkey = await waiting;
+    console.log("Passkey enrolled.");
+  }
+
   const env = {
     ...process.env,
     RPC_URL: rpc,
@@ -147,7 +220,10 @@ try {
     FACTORY_ADDRESS: factory,
     CLEAN_PAYTO: accounts.payee.address,
     RISKY_PAYTO: riskyPayTo,
-    RISKY_OWNER: riskyOwner
+    RISKY_OWNER: riskyOwner,
+    ...(passkey
+      ? { APPROVAL_HOOK: approvalHook, PASSKEY_X: passkey.x, PASSKEY_Y: passkey.y, PASSKEY_RP_ID_HASH: passkey.rpIdHash }
+      : {})
   };
 
   console.log("Creating and funding the demo permission wallets...");
@@ -181,16 +257,6 @@ try {
     spawnSync("npm", ["--workspace", "@eaw/agent", "run", "x402:demo"], { stdio: "inherit", env });
   }
 
-  const webEnv = {
-    ...env,
-    VITE_CHAIN_ID: "84532",
-    VITE_FROM_BLOCK: fromBlock.toString(),
-    VITE_FACTORY: missionFactory,
-    VITE_REUSABLE_FACTORY: factory,
-    VITE_APPROVAL_HOOK: approvalHook,
-    VITE_MERCHANTS: merchants.join(",")
-  };
-  start("web", "npm", ["run", "web"], webEnv).on("exit", () => { stop(); process.exit(0); });
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   stop();
