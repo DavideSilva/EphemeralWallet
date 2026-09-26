@@ -24,9 +24,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cancelCard, reclaimCard } from "@/lib/actions";
 import type { Card, Snapshot } from "@/lib/data";
-import { agentCommand, eth, time, validity } from "@/lib/format";
+import { agentCommand, eth, shortAddress, time, validity } from "@/lib/format";
 import { savedGoal, saveGoal } from "@/lib/goals";
 import { useMerchant } from "@/lib/hooks";
+import { savedScreening, type ScreeningStatus } from "@/lib/screening";
 
 export const Route = createFileRoute("/cards/$cardId")({ component: CardPage });
 
@@ -74,7 +75,7 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
 
         <div className="space-y-8">
           <div>
-            <h1 className="font-display text-4xl">{merchant?.name ?? "Card"}</h1>
+            <h1 className="font-display text-4xl">{merchant?.name ?? shortAddress(card.merchant)}</h1>
             <p className="mt-2 text-muted-foreground">
               {card.kind === "one-time"
                 ? "A one-time card with its own wallet. After one purchase it's used up, and the rest can come back to you."
@@ -82,6 +83,7 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
             </p>
           </div>
 
+          <IssueCheck cardId={card.id} />
           {card.status === "active" ? <TaskComposer card={card} /> : <Inactive card={card} />}
           <Catalog merchant={card.merchant} />
           <Controls card={card} />
@@ -97,6 +99,26 @@ function CardDetail({ card, snapshot }: { card: Card; snapshot: Snapshot }) {
         )}
       </section>
     </div>
+  );
+}
+
+const checkLabels: Record<ScreeningStatus, { text: string; tone: string }> = {
+  trusted: { text: "Verified: no scam, sanctions or stolen-funds history", tone: "text-banknote" },
+  caution: { text: "Caution: risk signals found, issued anyway", tone: "text-intaglio" },
+  blocked: { text: "Blocked merchant", tone: "text-void" },
+  unverified: { text: "Unverified: the check couldn't run, issued anyway", tone: "text-muted-foreground" },
+};
+
+function IssueCheck({ cardId }: { cardId: string }) {
+  const [check] = useState(() => savedScreening(cardId));
+  if (!check) return null;
+  const label = checkLabels[check.status];
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+      <span className="font-semibold">Merchant check at issue</span>
+      <span className={label.tone}>{label.text}</span>
+      <span className="text-muted-foreground">(Intercepta, {time(Date.parse(check.screenedAt) / 1000)})</span>
+    </p>
   );
 }
 
