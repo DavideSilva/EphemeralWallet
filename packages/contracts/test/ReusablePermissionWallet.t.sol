@@ -131,6 +131,18 @@ contract ReusablePermissionWalletTest is Test {
         wallet.execute(permissionId, address(targetA), 0.1 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
     }
 
+    function testPurchaseBeyondTheWalletBalanceSaysInsufficientFunds() public {
+        uint256 permissionId = createPermission(agentA, address(targetA), 10 ether, 1);
+
+        vm.expectRevert(ReusablePermissionWallet.InsufficientFunds.selector);
+        vm.prank(agentA);
+        wallet.execute(permissionId, address(targetA), 6 ether, abi.encodeCall(PermissionTarget.ping, ()), "");
+
+        (, , , uint256 spent, , , uint32 uses, , ) = wallet.permissions(permissionId);
+        assertEq(spent, 0);
+        assertEq(uses, 0);
+    }
+
     function testOwnerCanWithdrawWithoutDestroyingWallet() public {
         uint256 beforeBalance = owner.balance;
 

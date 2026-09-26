@@ -36,6 +36,7 @@ contract ReusablePermissionWallet {
     error HooksNeedNativePermission();
     error HookRejected(address hook, bytes reason);
     error Reentered();
+    error InsufficientFunds();
 
     struct Permission {
         address agent;
@@ -188,6 +189,9 @@ contract ReusablePermissionWallet {
         Permission storage permission = _consume(permissionId, value);
         if (permission.asset != address(0)) revert NotNativePermission();
         if (target != permission.allowedTarget) revert InvalidTarget();
+        // Permissions can promise more than the wallet holds; say so (before asking plugins, e.g. for an approval
+        // that couldn't be paid anyway) instead of a bare failed call.
+        if (address(this).balance < value) revert InsufficientFunds();
         _runHooks(permissionId, target, value, data);
 
         (bool ok, bytes memory returnData) = target.call{value: value}(data);
