@@ -4,6 +4,7 @@ import { createInterceptaClient, createProfiler } from "@eaw/risk";
 import { loadAgentConfig } from "./config";
 import { payUrl } from "./pay";
 import { createStore } from "./store";
+import { createWalletGateway } from "./wallet";
 
 const config = loadAgentConfig();
 const client = createInterceptaClient({ apiKey: config.interceptaKey });
@@ -75,6 +76,13 @@ createServer(async (req, res) => {
     if (req.method === "OPTIONS") return json(res, 204, {});
     if (req.method === "GET" && url.pathname === "/decisions") return json(res, 200, ctx.store.listDecisions());
     if (req.method === "GET" && url.pathname === "/holds") return json(res, 200, ctx.store.listHolds());
+    if (req.method === "GET" && url.pathname === "/wallets") {
+      const entries = Object.entries(config.wallets).filter(([, ref]) => ref !== undefined);
+      const statuses = await Promise.all(
+        entries.map(async ([key, ref]) => ({ key, ...(await createWalletGateway(config.rpcUrl, config.agentKey, ref!).readStatus()) }))
+      );
+      return json(res, 200, statuses);
+    }
     if (req.method === "GET" && url.pathname.startsWith("/profiles/")) {
       const address = url.pathname.split("/")[2];
       if (!isAddress(address, { strict: false })) return json(res, 400, { error: "invalid address" });
