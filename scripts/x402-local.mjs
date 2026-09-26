@@ -94,6 +94,8 @@ try {
   start("anvil", "anvil", ["--fork-url", forkUrl, "--silent"], process.env);
   await waitFor(rpcIsRunning, "Anvil");
   if ((await rpcCall("eth_chainId")) !== "0x14a34") throw new Error("fork is not Base Sepolia (chain id 84532)");
+  // The web app reads events and blocks from here on: earlier blocks live on the public RPC.
+  const fromBlock = BigInt(await rpcCall("eth_blockNumber")) + 1n;
 
   const contractsDir = "packages/contracts";
   const deps = spawnSync("forge", ["install", "foundry-rs/forge-std", "--no-git"], { cwd: contractsDir, encoding: "utf8" });
@@ -102,15 +104,19 @@ try {
     throw new Error("Could not install forge-std");
   }
 
-  console.log("Deploying ReusableWalletFactory...");
+  // The full card deployment: its ReusableWalletFactory also creates the x402 wallets.
+  console.log("Deploying the card and x402 contracts...");
   const deploy = spawnSync("forge", [
-    "script", "script/DeployX402.s.sol:DeployX402",
+    "script", "script/Deploy.s.sol:Deploy",
     "--rpc-url", rpc, "--broadcast", "--unlocked", "--sender", deployer
   ],{ cwd: contractsDir, encoding: "utf8", env: { ...process.env, FOUNDRY_DISABLE_NIGHTLY_WARNING: "1" } });
-  const factory = (deploy.stdout + deploy.stderr).match(/ReusableWalletFactory\s+(0x[a-fA-F0-9]{40})/)?.[1];
-  if (deploy.status !== 0 || !factory) {
+  const deployed = name => (deploy.stdout + deploy.stderr).match(new RegExp(`${name}\\s+(0x[a-fA-F0-9]{40})`))?.[1];
+  const factory = deployed("ReusableWalletFactory");
+  const missionFactory = deployed("MissionFactory");
+  const merchants = ["Cafe", "TicketOffice", "TipJar"].map(deployed);
+  if (deploy.status !== 0 || !factory || !missionFactory || merchants.some(m => !m)) {
     console.error(deploy.stdout, deploy.stderr);
-    throw new Error("Could not deploy ReusableWalletFactory");
+    throw new Error("Could not deploy the demo contracts");
   }
 
   // Gas for the three transacting keys; 10 USDC for the owner (setup moves 1.1 USDC into the demo wallets).
@@ -156,13 +162,21 @@ try {
   console.log("Risky wallet:  ", riskyWallet, `(owner ${riskyOwner})`);
   console.log("Clean payee:   ", accounts.payee.address);
   console.log("Risky payee:   ", riskyPayTo);
-  console.log("UI:             http://localhost:5173/payments\n");
+  console.log("UI:             http://localhost:5173 (cards), http://localhost:5173/payments (x402)\n");
 
   if (process.argv.includes("--demo")) {
     spawnSync("npm", ["--workspace", "@eaw/agent", "run", "x402:demo"], { stdio: "inherit", env });
   }
 
-  start("web", "npm", ["run", "web"], env).on("exit", () => { stop(); process.exit(0); });
+  const webEnv = {
+    ...env,
+    VITE_CHAIN_ID: "84532",
+    VITE_FROM_BLOCK: fromBlock.toString(),
+    VITE_FACTORY: missionFactory,
+    VITE_REUSABLE_FACTORY: factory,
+    VITE_MERCHANTS: merchants.join(",")
+  };
+  start("web", "npm", ["run", "web"], webEnv).on("exit", () => { stop(); process.exit(0); });
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   stop();

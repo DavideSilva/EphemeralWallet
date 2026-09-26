@@ -80,7 +80,7 @@ npm run x402:local            # fork, deploy, fund, start service + agent daemon
 npm run x402:local -- --demo  # same, plus the scripted four-scenario demo
 ```
 
-The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the factory, creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the agent daemon and the UI at http://localhost:5173 (open http://localhost:5173/payments). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`. If they're unset, the launcher uses two addresses that Intercepta tiers BLOCKED for different reasons: the risky seller is `0x3930…2fed`, an Intercepta test address flagged as a known scammer that received funds from exploits and drainers; the risky wallet's owner is `0x098B…2f96`, the OFAC-sanctioned Ronin bridge exploiter. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
+The launcher forks Base Sepolia into a local Anvil chain, so it's the real USDC contract (FiatToken v2.2) on chain id 84532. It deploys the demo contracts (the wallet factory plus the card contracts, so the card pages work too), creates fresh throwaway owner/agent/facilitator/payee keys, funds them on the fork (ETH plus USDC via `anvil_dealERC20`), creates the two demo wallets, and starts the x402 service, the agent daemon and the UI at http://localhost:5173 (open http://localhost:5173/payments). Screening still calls Intercepta live against mainnet data. `RISKY_PAYTO`/`RISKY_OWNER` come from `.env`. If they're unset, the launcher uses two addresses that Intercepta tiers BLOCKED for different reasons: the risky seller is `0x3930…2fed`, an Intercepta test address flagged as a known scammer that received funds from exploits and drainers; the risky wallet's owner is `0x098B…2f96`, the OFAC-sanctioned Ronin bridge exploiter. Settlement tx links point at basescan, but local fork transactions only exist on your Anvil chain.
 
 The keys are fresh on every run because Intercepta rejects Anvil's well-known dev addresses with a 404 ("An Externally Owned Account with this address doesn't exist"). The fail-closed rule would otherwise refuse every payment.
 
@@ -141,8 +141,9 @@ only allows cross-origin reads from `SERVICE_UI_ORIGIN` (defaults to `AGENT_UI_O
 - Screening fails closed: an Intercepta timeout, error or unexpected response refuses the payment. Intercepta also
   answers 404 ("An Externally Owned Account with this address doesn't exist") for some addresses, such as Anvil's
   well-known dev accounts, so those counterparties are refused too.
-- Under `npm run x402:local` only the **Payments** page is fully usable; the card pages expect the plain Anvil chain
-  from `npm run demo`.
+- `npm run x402:local` also deploys the card contracts on the fork, so the card pages and `npm run agent` work there
+  too (chain 84532). The web app reads events only from the block after the fork point (`VITE_FROM_BLOCK`): earlier
+  blocks would be fetched from the public Base Sepolia RPC.
 
 ### Intercepta API feedback
 

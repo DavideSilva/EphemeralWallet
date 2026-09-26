@@ -12,7 +12,8 @@ screened by the Intercepta API. `README.md` is the user guide; `SPEC.md` is the 
 - `cd packages/contracts && forge test` — the Base Sepolia fork test skips unless `BASE_SEPOLIA_RPC_URL` is set.
 - `npm run demo` — card demo on a plain local Anvil chain (port 8545) + web UI on 5173.
 - `npm run x402:local [-- --demo]` — x402 stack on an Anvil fork of Base Sepolia: service (4021), agent daemon (4100),
-  web UI (`/payments`). Needs `INTERCEPTA_API_KEY` in `.env`. Stop it and check ports 8545/4021/4100/5173 are free.
+  web UI (`/payments`, and the card pages: it deploys `Deploy.s.sol` and sets `VITE_CHAIN_ID=84532` +
+  `VITE_FROM_BLOCK`). Needs `INTERCEPTA_API_KEY` in `.env`. Stop it and check ports 8545/4021/4100/5173 are free.
 - `npm --workspace @eaw/risk run smoke -- <risky> <clean>` — live Intercepta check; rewrites `packages/risk/test/fixtures/live.json`.
 
 ## Layout
