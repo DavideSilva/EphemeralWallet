@@ -9,6 +9,10 @@
     "demo": "node scripts/demo.mjs",
     "agent": "npm --workspace @eaw/agent run start",
     "web": "npm --workspace @eaw/web run dev",
-    "permission-agent": "npm --workspace @eaw/agent run permission --"
+    "permission-agent": "npm --workspace @eaw/agent run permission --",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4"
   }
 }
