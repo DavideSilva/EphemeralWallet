@@ -16,7 +16,7 @@ export function StatusStamp({ status, size = "md" }: { status: CardStatus; size?
           initial={{ opacity: 0, scale: 1.6 }}
           animate={{ opacity: 0.88, scale: 1 }}
           transition={{ type: "spring", stiffness: 520, damping: 26 }}
-          className="pointer-events-none absolute inset-0 grid place-items-center"
+          className="pointer-events-none absolute inset-0 flex items-center justify-end pr-[9%]"
         >
           <span
             className={`font-display -rotate-12 rounded-sm border-[3px] border-double px-3 pt-1 uppercase tracking-[0.18em] mix-blend-multiply ${

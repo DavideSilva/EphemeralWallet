@@ -4,6 +4,12 @@ import { merchantAbi, missionWalletAbi, reusableWalletAbi } from "../../../packa
 import { describeRevert, revertData } from "../../../packages/shared/src/revert";
 import { planOffline, planWithClaude, type Plan } from "./planner";
 
+try {
+  process.loadEnvFile(new URL("../../../.env", import.meta.url));
+} catch {
+  // No .env file: rely on the shell environment.
+}
+
 const [cardArg, ...goalWords] = process.argv.slice(2);
 const goal = goalWords.join(" ").trim();
 if (!cardArg || !goal) {
