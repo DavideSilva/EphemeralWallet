@@ -116,13 +116,6 @@ async function scanBlocked(
   merchants: Merchant[],
   targetOf: Map<string, Address>,
 ): Promise<Activity[]> {
-  const genesis = (await publicClient.getBlock({ blockNumber: 0n })).hash;
-  if (scan.chainStart !== genesis || toBlock < scan.scannedTo) {
-    scan.chainStart = genesis;
-    scan.scannedTo = -1n;
-    scan.found = [];
-  }
-
   for (let blockNumber = scan.scannedTo + 1n; blockNumber <= toBlock; blockNumber++) {
     const block = await publicClient.getBlock({ blockNumber, includeTransactions: true });
     blockTimes.set(blockNumber, Number(block.timestamp));
@@ -165,7 +158,7 @@ async function scanBlocked(
         cardId: id,
         at: Number(block.timestamp),
         block: blockNumber,
-        position: tx.transactionIndex ?? 0,
+        position: order(tx.transactionIndex ?? 0),
         hash: tx.hash,
         value,
         memo,
@@ -178,9 +171,23 @@ async function scanBlocked(
   return scan.found;
 }
 
+async function resetIfChainRestarted(toBlock: bigint) {
+  const genesis = (await publicClient.getBlock({ blockNumber: 0n })).hash;
+  if (scan.chainStart !== genesis || toBlock < scan.scannedTo) {
+    scan.chainStart = genesis;
+    scan.scannedTo = -1n;
+    scan.found = [];
+    blockTimes.clear();
+  }
+}
+
+// Orders activity within a block: by transaction, then by log inside it.
+const order = (transactionIndex: number, logIndex = 0) => transactionIndex * 10_000 + logIndex;
+
 export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Promise<Snapshot> {
   const { missionFactory, reusableFactory } = contracts();
   const toBlock = await publicClient.getBlockNumber();
+  await resetIfChainRestarted(toBlock);
   const now = Date.now() / 1000;
 
   const [missionLogs, accountAddress] = await Promise.all([
@@ -284,7 +291,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
       cardId: id,
       at: at(log.blockNumber),
       block: log.blockNumber,
-      position: log.logIndex,
+      position: order(log.transactionIndex, log.logIndex),
       hash: log.transactionHash,
       value: maxSpend,
     });
@@ -323,7 +330,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
       cardId: id,
       at: at(log.blockNumber),
       block: log.blockNumber,
-      position: log.logIndex,
+      position: order(log.transactionIndex, log.logIndex),
       hash: log.transactionHash,
     };
     if (log.eventName === "Executed") {
@@ -346,7 +353,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
       id: `${log.transactionHash}-${log.logIndex}`,
       at: at(log.blockNumber),
       block: log.blockNumber,
-      position: log.logIndex,
+      position: order(log.transactionIndex, log.logIndex),
       hash: log.transactionHash,
     };
     if (log.eventName === "PermissionCreated") {

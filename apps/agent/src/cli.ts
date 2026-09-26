@@ -1,4 +1,13 @@
-import { createPublicClient, createWalletClient, encodeFunctionData, formatEther, http, isAddress, type Address } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  encodeFunctionData,
+  formatEther,
+  http,
+  isAddress,
+  zeroAddress,
+  type Address,
+} from "viem";
 import { foundry } from "viem/chains";
 import { merchantAbi, missionWalletAbi, reusableWalletAbi } from "../../../packages/shared/src/abis";
 import { describeRevert, revertData } from "../../../packages/shared/src/revert";
@@ -18,8 +27,8 @@ if (!cardArg || !goal) {
   process.exit(1);
 }
 
-const [walletPart, permissionPart] = cardArg.split("-");
-if (!isAddress(walletPart)) {
+const [walletPart, permissionPart, ...extra] = cardArg.split("-");
+if (!isAddress(walletPart) || extra.length > 0 || (permissionPart !== undefined && !/^\d+$/.test(permissionPart))) {
   console.error(`"${cardArg}" is not a card number. Copy the command from the card's page in the app.`);
   process.exit(1);
 }
@@ -53,6 +62,7 @@ async function readCard(): Promise<Limits> {
     functionName: "permissions",
     args: [permissionId],
   });
+  if (agent === zeroAddress) throw new Error("No such multi-use card");
   return {
     agent,
     merchant,
