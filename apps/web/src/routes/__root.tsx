@@ -30,9 +30,6 @@ function Root() {
             <Link to="/activity" className={navLink}>
               Activity
             </Link>
-            <Link to="/payments" className={navLink}>
-              Payments
-            </Link>
           </nav>
           {!onPayments && (
             <div className="ml-auto flex items-center gap-3">
