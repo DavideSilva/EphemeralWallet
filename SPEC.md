@@ -4,7 +4,7 @@
 
 Give AI agents narrowly-scoped authority without giving them permanent control of funds.
 
-The MVP supports two models that share the same permission concepts: **who can act, where, how much, how long, and how many times**.
+The MVP supports two models that share the same permission concepts: **who can act, where, how much, how long, and how many times**. Mode B permissions can also pay x402 services in USDC (see "Mode B — token permissions (x402)").
 
 ## Mode A — disposable mission wallet
 
@@ -43,18 +43,47 @@ Each permission contains:
 - maxUses
 - uses
 - revoked
+- asset (`address(0)` = native ETH; otherwise an EIP-3009 token such as USDC)
 
 Invariants:
 - permissions are independent
 - only the permission's agent can use it
-- each permission can call only its allowed target
+- a native permission can call only its allowed target (`execute`); a token permission cannot `execute`
 - cumulative spend cannot exceed maxSpend
 - uses cannot exceed maxUses
-- expired or revoked permissions cannot execute
+- expired or revoked permissions cannot execute or approve payments
 - revoking one permission does not affect others
-- the owner can withdraw funds without destroying the wallet
+- the owner can withdraw ETH (`withdraw`) and tokens (`withdrawToken`) without destroying the wallet
+- the owner can hand the wallet to a new owner (`transferOwnership`)
 
 Best for: agents that perform repeated jobs from a shared wallet.
+
+## Mode B — token permissions (x402)
+
+A permission with a non-zero `asset` lets the agent pay x402 services from the wallet. x402 on EVM is a USDC
+`transferWithAuthorization` (EIP-3009) signed by the payer; here the payer is the wallet contract, which answers ERC-1271.
+
+- `allowedTarget` is the only payee, or `address(0)` for any payee (the agent's screening decides who).
+- `approvePayment(permissionId, payTo, amount, validAfter, validBefore, nonce)`: agent only. Applies every check above
+  (budget, uses, expiry, revoked) plus: token permission only, payee matches if pinned, `validBefore <= expiresAt`,
+  nonce not already approved. Spend and uses are consumed here, before any signature exists. The wallet computes the
+  exact EIP-712 digest on-chain (from the token's `DOMAIN_SEPARATOR`, `from = address(this)`) and records it in
+  `approvedDigest`; `approvedNonce[nonce] = permissionId + 1` lets a payee find the approving agent.
+- `isValidSignature(hash, signature)` (ERC-1271) returns the magic value only for an approved digest. The signature bytes
+  are ignored; callers pass more than 65 bytes so x402 facilitators take the contract-signer path.
+- An approval pays exactly one authorization: the digest binds wallet, payee, amount, validity window, nonce and token,
+  and the token's own nonce tracking plus `approvedNonce` prevent replay.
+
+Known limitation: an approved but unsettled authorization stays valid until `validBefore`, even if the permission is
+revoked later (the agent caps that window at 15 minutes).
+
+## Factories
+
+- `MissionFactory.createMission` deploys and funds one Mode A wallet.
+- `ReusableWalletFactory.createWallet` deploys a Mode B wallet owned by the caller.
+- `ReusableWalletFactory.createWalletFor(owner, agent, asset, maxSpend, expiresAt, maxUses)` deploys a Mode B wallet
+  for any owner with one "any payee" permission (id 0). The factory owns the wallet only within that call. It is
+  permissionless, which is fine for the demo and not for production.
 
 ## Shared behavior
 
@@ -68,3 +97,6 @@ Create mission -> fund wallet -> agent executes -> authority consumed -> second 
 
 ### Reusable
 Create reusable wallet -> fund once -> create Permission A and Permission B -> agents execute independently -> revoke/exhaust one permission -> wallet and other permissions remain active.
+
+### x402 payments
+Agent requests a paid endpoint -> 402 -> Intercepta screens payee, token and authorization -> PAY/CAP: `approvePayment` then the facilitator settles; HOLD: owner approves or rejects; REFUSE: nothing is signed. The service separately screens the paying wallet, its owner and its agent before it settles.

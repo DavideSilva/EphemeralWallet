@@ -1,6 +1,9 @@
 # Safe Agent-to-Agent Payments — x402 + Intercepta — Design
 
 Date: 2026-09-26
+
+> **Historical document.** This records the design as approved on 2026-09-26, before implementation review and the merge with main (#6). The code and `SPEC.md` are authoritative; notable later changes: the x402 UI is the `/payments` route in the card-based app, `execute` takes a `memo`, screening fails closed on unknown enum values and tiers on toxic score, and `npm run x402:local` runs everything on an Anvil fork of Base Sepolia.
+
 Status: approved in brainstorming, pending spec review
 
 ## Goal

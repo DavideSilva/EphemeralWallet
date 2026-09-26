@@ -4,7 +4,9 @@ Hackathon MVP for disposable, task-scoped agent authority.
 
 > Give an AI agent a temporary capability, not a permanent wallet.
 
-The project now demonstrates two models: **a disposable wallet per mission** for maximum isolation, and **a reusable wallet with multiple disposable permissions** for repeated agent activity.
+The project demonstrates two models: **a disposable wallet per mission** for maximum isolation, and **a reusable wallet with multiple disposable permissions** for repeated agent activity.
+
+On top of that, agents can **pay each other over x402** in USDC from a reusable wallet, with every payment screened live by the [Intercepta API](https://intercepta.io) before the agent signs it and before the service accepts it. See [Safe agent-to-agent payments](#safe-agent-to-agent-payments-x402--intercepta); the quickest way to try it is `npm run x402:local -- --demo`.
 
 ## Run the demo locally
 
@@ -59,7 +61,7 @@ the [Intercepta API](https://intercepta.io) and the verdict — PAY, CAP, HOLD o
   verifying or settling.
 - **Counterparty risk:** every wallet on the other side gets a profile (TRUSTED / CAUTION / BLOCKED) with Intercepta's reasons.
 
-Payments run on Base Sepolia; screening uses the same addresses' **mainnet** history (Intercepta only covers mainnets).
+Payments run against Base Sepolia's real USDC contract, either on a local Anvil fork (`npm run x402:local`) or on the public testnet. Screening uses the same addresses' **mainnet** history (Intercepta only covers mainnets). Contract behaviour is specified in [`SPEC.md`](SPEC.md#mode-b--token-permissions-x402).
 
 ### Where the Intercepta API is called
 
@@ -129,6 +131,11 @@ Origins must match exactly (`localhost` and `127.0.0.1` are different origins): 
 - The permission budget is consumed when the agent approves a payment on-chain, not when it settles.
 - An approved-but-unsettled authorization survives a revoke until its `validBefore` (the agent refuses windows over 15 minutes).
 - `createWalletFor` on the factory is permissionless — fine for the demo, not for production.
+- Screening fails closed: an Intercepta timeout, error or unexpected response refuses the payment. Intercepta also
+  answers 404 ("An Externally Owned Account with this address doesn't exist") for some addresses, such as Anvil's
+  well-known dev accounts, so those counterparties are refused too.
+- Under `npm run x402:local` only the **Payments** page is fully usable; the card pages expect the plain Anvil chain
+  from `npm run demo`.
 
 ### Intercepta API feedback
 
@@ -137,6 +144,22 @@ Origins must match exactly (`localhost` and `127.0.0.1` are different origins): 
 - **Confusing:** the trait `risk` scale isn't documented. Live responses show 0–100 with fractional values (e.g. `fake_phishing_transfer` at 0.54), so we had to guess thresholds.
 - **Missing:** Scan Message rated a transfer *to a sanctioned address* as `Low`. It doesn't factor in the recipient's own risk, so we screen `payTo` separately with the address scans.
 - **Missing:** no testnet chain ids. x402 runs on testnets, so we rewrite the EIP-712 domain to Base mainnet (chain 8453, mainnet USDC) purely for screening.
+
+## Development and tests
+
+```bash
+npm install
+npm test                                   # vitest in packages/risk, apps/agent, apps/service
+npm --workspace @eaw/web run build         # vite build + type-check
+npm --workspace @eaw/agent run typecheck
+cd packages/contracts && forge test        # contract tests; the Base Sepolia fork test is skipped...
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org forge test --match-contract X402ForkTest   # ...unless this is set
+```
+
+CI (`.github/workflows`) runs the same: `npm test`, the web build, the agent type-check and `forge test`.
+
+If the web app crashes on start after pulling (for example a React version error), an old untracked
+`package-lock.json` is likely pinning stale dependencies: `rm -rf node_modules package-lock.json && npm install`.
 
 ## Structure
 
