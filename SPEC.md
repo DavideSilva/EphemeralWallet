@@ -125,8 +125,8 @@ A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts impleme
   nonces[requestKey], validUntil))`; it must have user verification, `authenticatorData[0:32] == rpIdHash`, and a
   low-s signature, verified with the P-256 precompile (`0x100`). Each passkey approval bumps `nonces[requestKey]`, so a
   signature can't be replayed. The origin in `clientDataJSON` is not checked; `rpIdHash` binds the passkey to one site.
-- The plugin's constructor requires the P-256 precompile (or solady's fallback verifier). Plain Anvil has it; a fork
-  of Base Sepolia needs `anvil --hardfork osaka`.
+- The plugin's constructor requires the P-256 precompile (or solady's fallback verifier), so both demo scripts start
+  Anvil with `--hardfork osaka` (a fork of Base Sepolia doesn't get the precompile otherwise).
 
 ## Factories
 

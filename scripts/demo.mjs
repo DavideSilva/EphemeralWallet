@@ -31,7 +31,8 @@ if (await rpcIsRunning()) {
 }
 
 console.log("Starting local Anvil chain...");
-const anvil = spawn("anvil", ["--silent"], { stdio: "inherit" });
+// osaka: the approval plugin needs the P-256 precompile (0x100); don't rely on Anvil's default hardfork.
+const anvil = spawn("anvil", ["--hardfork", "osaka", "--silent"], { stdio: "inherit" });
 
 async function waitForRpc() {
   for (let i = 0; i < 40; i++) {
