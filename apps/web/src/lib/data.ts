@@ -7,6 +7,7 @@ import {
   reusableFactoryAbi,
   reusableWalletAbi,
 } from "@shared/abis";
+import { APPROVAL_WAIT_SECONDS } from "@shared/approval";
 import { decodePurchase, decodeRevert, describeRevert, revertData } from "@shared/revert";
 import { publicClient } from "./chain";
 import { approvalHook, contracts, FROM_BLOCK } from "./config";
@@ -48,7 +49,8 @@ export type Held = {
   target: Address;
   value: bigint;
   data: Hex;
-  state: "waiting" | "approved" | "used" | "expired";
+  /** "timed-out": nobody approved it while the agent was still waiting, so approving now would do nothing. */
+  state: "waiting" | "timed-out" | "approved" | "used" | "expired";
 };
 
 export type Activity = {
@@ -475,7 +477,9 @@ async function withApprovals(
   return blocked.map(item => {
     if (!item.held) return item;
     const approval = events.find(e => e.eventName === "Approved" && e.args.requestKey === item.held!.requestKey && after(e, item));
-    if (!approval || approval.eventName !== "Approved") return item;
+    if (!approval || approval.eventName !== "Approved") {
+      return now - item.at > APPROVAL_WAIT_SECONDS ? { ...item, held: { ...item.held, state: "timed-out" as const } } : item;
+    }
 
     const id = `${approval.transactionHash}-${approval.logIndex}`;
     if (!shown.has(id)) {
@@ -492,7 +496,10 @@ async function withApprovals(
         summary: item.summary,
       });
     }
-    const used = events.some(e => e.eventName === "ApprovalUsed" && e.args.requestKey === item.held!.requestKey && after(e, item));
+    // Only a use after this approval counts; an earlier or later approval cycle of the same request doesn't.
+    const afterApproval = (e: (typeof events)[number]) =>
+      e.blockNumber > approval.blockNumber || (e.blockNumber === approval.blockNumber && e.logIndex > approval.logIndex);
+    const used = events.some(e => e.eventName === "ApprovalUsed" && e.args.requestKey === item.held!.requestKey && afterApproval(e));
     const state = used ? "used" : Number(approval.args.validUntil) < now ? "expired" : "approved";
     return { ...item, held: { ...item.held, state } };
   });

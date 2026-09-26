@@ -80,6 +80,8 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
         ? "Held: waiting for your approval"
         : held.state === "expired"
           ? "Held: your approval expired"
+          : held.state === "timed-out"
+            ? "Held: not approved while the agent waited"
           : "Held for your approval"
       : `Blocked: ${item.reason ?? "rejected by the card"}`,
     approved: `You approved ${item.summary ?? "a purchase"}`,
