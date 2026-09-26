@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PaymentsPanel } from "@/x402/PaymentsPanel";
+import { ProtectPayments } from "@/x402/ProtectPayments";
 
 export const Route = createFileRoute("/payments")({ component: PaymentsPage });
 
@@ -12,6 +13,7 @@ function PaymentsPage() {
         the seller accepts it, Intercepta checks who is paying. Anything risky is blocked or waits for you.
       </p>
       <div className="mt-8">
+        <ProtectPayments />
         <PaymentsPanel />
       </div>
     </div>
