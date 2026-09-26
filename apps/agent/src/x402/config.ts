@@ -1,0 +1,36 @@
+import type { Hex } from "viem";
+import type { Address } from "@eaw/risk";
+
+export type WalletRef = { wallet: Address; permissionId: bigint };
+export type AgentConfig = {
+  rpcUrl: string;
+  agentKey: Hex;
+  interceptaKey: string;
+  port: number;
+  serviceUrl: string;
+  wallets: { default: WalletRef; risky?: WalletRef };
+};
+
+try { process.loadEnvFile(new URL("../../../../.env", import.meta.url).pathname); } catch {}
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} missing in .env`);
+  return value;
+}
+
+export function loadAgentConfig(): AgentConfig {
+  return {
+    rpcUrl: process.env.RPC_URL ?? "https://sepolia.base.org",
+    agentKey: required("AGENT_PRIVATE_KEY") as Hex,
+    interceptaKey: required("INTERCEPTA_API_KEY"),
+    port: Number(process.env.AGENT_PORT ?? 4100),
+    serviceUrl: process.env.SERVICE_URL ?? "http://localhost:4021",
+    wallets: {
+      default: { wallet: required("WALLET_ADDRESS") as Address, permissionId: BigInt(process.env.PERMISSION_ID ?? 0) },
+      risky: process.env.RISKY_WALLET_ADDRESS
+        ? { wallet: process.env.RISKY_WALLET_ADDRESS as Address, permissionId: 0n }
+        : undefined
+    }
+  };
+}
