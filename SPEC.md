@@ -85,6 +85,24 @@ Known limitations:
   `msg.sender == asset` would close this, but it would also break off-chain ERC-1271 verification (facilitators call it
   via `eth_call`), so it is not done.
 
+## Mode B — plugins
+
+A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts implementing `IPermissionHook.beforeExecute`.
+
+- `createPermissionWithHooks(agent, allowedTarget, maxSpend, expiresAt, maxUses, asset, hooks)`: owner only. Each hook
+  is `{hook, config}`; `config` is that plugin's settings for this permission. Rejected: a token permission
+  (`HooksNeedNativePermission`), a hook with no code (`InvalidHook`), the same hook twice (`DuplicateHook`), more than 4
+  (`TooManyHooks`). `HookAttached(permissionId, hook, config)` is emitted per hook; `hooksOf(permissionId)` lists them.
+- Plugins are fixed at creation. To change the rules, revoke the permission and issue a new one.
+- `execute` order: built-in checks and consumption (`_consume`), native and target checks, every plugin's
+  `beforeExecute` in order, the merchant call. A plugin holds the purchase by reverting; the wallet wraps the reason as
+  `HookRejected(hook, reason)` so a plugin can't pass off one of the wallet's own errors, and the whole purchase
+  (including consumption) is rolled back.
+- `approvePayment` (x402) does not run plugins.
+- `execute` can't be re-entered (`Reentered`), so plugins run once per purchase.
+- Trust model: plugins are code the owner chose. They are called with the wallet as `msg.sender`, key their state by
+  `(msg.sender, permissionId)`, and must not call back into the wallet.
+
 ## Factories
 
 - `MissionFactory.createMission` deploys and funds one Mode A wallet.
