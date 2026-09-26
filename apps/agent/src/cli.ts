@@ -12,6 +12,7 @@ import {
 import { foundry } from "viem/chains";
 import { approvalHookAbi, merchantAbi, missionWalletAbi, reusableWalletAbi } from "../../../packages/shared/src/abis";
 import { decodeRevert, describeRevert, revertData } from "../../../packages/shared/src/revert";
+import { APPROVAL_WAIT_SECONDS } from "../../../packages/shared/src/approval";
 import { planOffline, planWithClaude, type Plan } from "./planner";
 
 try {
@@ -144,27 +145,35 @@ const send = () =>
         gas,
       });
 
-const APPROVAL_TIMEOUT_MS = 5 * 60_000;
-
 // Polls the approval plugin until the owner approves this exact purchase in the app, or time runs out.
 async function waitForApproval(hook: Address, requestKey: Hex): Promise<boolean> {
-  const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
+  const deadline = Date.now() + APPROVAL_WAIT_SECONDS * 1000;
   let lastNotice = 0;
-  process.once("SIGINT", () => {
+  const stop = () => {
     console.log("\nStopped waiting for approval. Nothing was bought.");
     process.exit(2);
-  });
-  while (Date.now() < deadline) {
-    const until = await publicClient.readContract({ address: hook, abi: approvalHookAbi, functionName: "approvedUntil", args: [requestKey] });
-    if (until > 0n) return true;
-    if (Date.now() - lastNotice >= 30_000) {
-      const left = Math.ceil((deadline - Date.now()) / 1000);
-      console.log(`        Waiting for the owner to approve this purchase in the app (${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left)...`);
-      lastNotice = Date.now();
+  };
+  process.once("SIGINT", stop);
+  try {
+    while (Date.now() < deadline) {
+      const [until, block] = await Promise.all([
+        publicClient.readContract({ address: hook, abi: approvalHookAbi, functionName: "approvedUntil", args: [requestKey] }),
+        publicClient.getBlock(),
+      ]);
+      // An approval from an earlier run that expired unused stays on-chain; only a live one counts.
+      if (until >= block.timestamp) return true;
+      if (Date.now() - lastNotice >= 30_000) {
+        const left = Math.ceil((deadline - Date.now()) / 1000);
+        console.log(`        Waiting for the owner to approve this purchase in the app (${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left)...`);
+        lastNotice = Date.now();
+      }
+      await new Promise(resolve => setTimeout(resolve, 1_000));
     }
-    await new Promise(resolve => setTimeout(resolve, 1_000));
+    return false;
+  } finally {
+    // Once the retry is being sent, Ctrl-C shouldn't claim nothing was bought.
+    process.off("SIGINT", stop);
   }
-  return false;
 }
 
 let hash = await send();
@@ -176,7 +185,7 @@ if (receipt.status !== "success" && permissionId !== undefined) {
     console.log(`Held    ${order} needs the owner's approval`);
     console.log(`Tx      ${hash}`);
     if (!(await waitForApproval(revert.hook, revert.args![0] as Hex))) {
-      console.log("No approval within 5 minutes. Nothing was bought.");
+      console.log(`No approval within ${APPROVAL_WAIT_SECONDS / 60} minutes. Nothing was bought.`);
       process.exit(2);
     }
     console.log("Approved by the owner. Sending the same order again...");
