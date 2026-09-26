@@ -1,4 +1,4 @@
-import { encodeAbiParameters, parseEventLogs, zeroAddress, type Address } from "viem";
+import { encodeAbiParameters, erc20Abi, parseEventLogs, zeroAddress, type Address } from "viem";
 import { sendTransaction, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import { approvalHookAbi, missionFactoryAbi, missionWalletAbi, reusableFactoryAbi, reusableWalletAbi } from "@shared/abis";
 import { publicClient, wagmiConfig } from "./chain";
@@ -10,6 +10,8 @@ export type IssueInput = {
   kind: "one-time" | "multi-use";
   owner: Address;
   merchant: Address;
+  /** Multi-use only: a token (USDC) card for an x402 seller. Its budget moves from the owner into the account. */
+  asset?: Address;
   agent: Address;
   budget: bigint;
   maxUses: number;
@@ -74,6 +76,26 @@ export async function issueCard(input: IssueInput): Promise<string> {
     account = created.args.wallet;
   }
 
+  if (input.asset) {
+    // The seller is paid from the account's own balance, so the budget goes in first: if that fails (the owner
+    // lacks USDC) no card is issued, and if issuing then fails the USDC is still the owner's, in their account.
+    await confirm(
+      await writeContract(wagmiConfig, { address: input.asset, abi: erc20Abi, functionName: "transfer", args: [account, input.budget] }),
+    );
+    // The contract only allows the approval plugin on ETH cards (HooksNeedNativePermission).
+    const receipt = await confirm(
+      await writeContract(wagmiConfig, {
+        address: account,
+        abi: reusableWalletAbi,
+        functionName: "createPermission",
+        args: [input.agent, input.merchant, input.budget, expiresAt, input.maxUses, input.asset],
+      }),
+    );
+    const [created] = parseEventLogs({ abi: reusableWalletAbi, eventName: "PermissionCreated", logs: receipt.logs });
+    if (!created) throw new Error("The card was issued but its number could not be read");
+    return cardId(account, created.args.permissionId);
+  }
+
   const hook = approvalHook();
   if (input.approvalThreshold !== undefined && !hook) throw new Error("The approval plugin isn't deployed. Restart the demo.");
   const receipt = await confirm(
@@ -132,6 +154,13 @@ export async function reclaimCard(card: Card) {
 
 export async function topUp(account: Address, amount: bigint) {
   await confirm(await sendTransaction(wagmiConfig, { to: account, value: amount }));
+}
+
+/** Moves a token (USDC) from the account back to the owner: what's left of cancelled, expired or used-up cards. */
+export async function withdrawToken(account: Address, asset: Address, amount: bigint) {
+  await confirm(
+    await writeContract(wagmiConfig, { address: account, abi: reusableWalletAbi, functionName: "withdrawToken", args: [asset, amount] }),
+  );
 }
 
 /**

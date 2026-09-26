@@ -3,7 +3,8 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 // Runs the whole demo (cards + x402 + Intercepta) on a local Anvil fork of Base Sepolia:
 // real USDC (FiatToken v2.2) and chain id 84532, fresh throwaway owner / agent /
-// facilitator / payee keys funded on the fork. Screening stays live; without an
+// facilitator / payee keys funded on the fork. Two x402 sellers: the dataset service
+// and the Mount Fuji weather service, each settling with its own facilitator key. Screening stays live; without an
 // INTERCEPTA_API_KEY it fails closed (payments refused, merchants unverified).
 //   npm run demo                   start chain, service, agent daemon and UI
 //   npm run demo -- --scenarios    also run the scripted four-scenario x402 demo
@@ -19,7 +20,7 @@ try {
 const rpc = "http://127.0.0.1:8545";
 const forkUrl = process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
 const usdc = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-// Anvil dev account #0 only deploys the factory. It is never screened: Intercepta
+// Anvil dev account #0 deploys the factory and is the UI's card owner. It is never screened: Intercepta
 // rejects the well-known dev addresses ("Externally Owned Account ... doesn't exist"),
 // so every screened identity gets a fresh key per run.
 const deployer = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -27,7 +28,15 @@ const freshAccount = () => {
   const key = generatePrivateKey();
   return { key, address: privateKeyToAccount(key).address };
 };
-const accounts = { owner: freshAccount(), agent: freshAccount(), facilitator: freshAccount(), payee: freshAccount() };
+const accounts = {
+  owner: freshAccount(),
+  agent: freshAccount(),
+  facilitator: freshAccount(),
+  payee: freshAccount(),
+  // Separate facilitator key: two processes sending from one key would race on nonces.
+  weatherFacilitator: freshAccount(),
+  weatherPayee: freshAccount()
+};
 // Defaults when .env doesn't set them. Both tier BLOCKED with Intercepta, for different reasons:
 // the payee is a test address from Intercepta (known scammer, funds from exploits and drainers),
 // the owner is the publicly OFAC-listed Ronin bridge exploiter (sanctions).
@@ -132,11 +141,13 @@ try {
     throw new Error("Could not deploy the demo contracts");
   }
 
-  // Gas for the three transacting keys; 10 USDC for the owner (setup moves 1.1 USDC into the demo wallets).
-  for (const role of ["owner", "agent", "facilitator"]) {
+  // Gas for the four transacting keys; 10 USDC for the owner (setup moves 1.1 USDC into the demo wallets).
+  for (const role of ["owner", "agent", "facilitator", "weatherFacilitator"]) {
     await rpcCall("anvil_setBalance", [accounts[role].address, "0x56BC75E2D63100000"]); // 100 ETH
   }
   await rpcCall("anvil_dealERC20", [accounts.owner.address, usdc, "0x989680"]);
+  // The UI signs as the deployer: 10 USDC funds the budgets of cards for the weather service (an x402 merchant).
+  await rpcCall("anvil_dealERC20", [deployer, usdc, "0x989680"]);
 
   const env = {
     ...process.env,
@@ -163,11 +174,20 @@ try {
   env.RISKY_WALLET_ADDRESS = riskyWallet;
 
   const servicePort = env.SERVICE_PORT ?? "4021";
+  const weatherPort = env.WEATHER_PORT ?? "4022";
   start("service", "npm", ["--workspace", "@eaw/service", "run", "start"], env);
+  start("weather", "npm", ["--workspace", "@eaw/weather", "run", "start"], {
+    ...env,
+    WEATHER_PAY_TO: accounts.weatherPayee.address,
+    WEATHER_FACILITATOR_PRIVATE_KEY: accounts.weatherFacilitator.key
+  });
   start("agent daemon", "npm", ["--workspace", "@eaw/agent", "run", "daemon"], env);
   await waitFor(async () => {
     try { return (await fetch(`http://localhost:${servicePort}/decisions`)).ok; } catch { return false; }
   }, "x402 service");
+  await waitFor(async () => {
+    try { return (await fetch(`http://localhost:${weatherPort}/weather/mount-fuji`)).status === 402; } catch { return false; }
+  }, "weather service");
 
   console.log("\nLocal demo ready (Anvil fork of Base Sepolia, chain 84532)");
   console.log("Factory:       ", factory);
@@ -175,6 +195,7 @@ try {
   console.log("Risky wallet:  ", riskyWallet, `(owner ${riskyOwner})`);
   console.log("Clean payee:   ", accounts.payee.address);
   console.log("Risky payee:   ", riskyPayTo);
+  console.log("Weather payee: ", accounts.weatherPayee.address, `(http://localhost:${weatherPort}/weather/mount-fuji)`);
   console.log("UI:             http://localhost:5173 (cards), http://localhost:5173/payments (x402)\n");
 
   if (process.argv.includes("--scenarios")) {
@@ -188,7 +209,8 @@ try {
     VITE_FACTORY: missionFactory,
     VITE_REUSABLE_FACTORY: factory,
     VITE_APPROVAL_HOOK: approvalHook,
-    VITE_MERCHANTS: merchants.join(",")
+    VITE_MERCHANTS: merchants.join(","),
+    VITE_WEATHER_PAY_TO: accounts.weatherPayee.address
   };
   start("web", "npm", ["run", "web"], webEnv).on("exit", () => { stop(); process.exit(0); });
 } catch (error) {

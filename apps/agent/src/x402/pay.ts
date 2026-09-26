@@ -3,8 +3,9 @@ import { decodePaymentRequiredHeader, decodePaymentResponseHeader, encodePayment
 import type { PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { DEFAULT_POLICY, type InterceptaClient, type Profiler, type Verdict } from "@eaw/risk";
-import type { Hex } from "viem";
-import type { AgentConfig } from "./config";
+import type { Account, Address, Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import type { AgentConfig, WalletRef } from "./config";
 import { createGuardedSigner, PaymentBlocked, type Approval, type Authorization } from "./guarded-signer";
 import { createScreener } from "./screen";
 import type { createStore, Decision } from "./store";
@@ -19,8 +20,18 @@ const SETTLE_TIMEOUT_MS = 60_000;
 export async function payUrl(ctx: PayContext, url: string, walletKey: "default" | "risky", approvedFor?: Approval): Promise<Decision> {
   const ref = ctx.config.wallets[walletKey];
   if (!ref) throw new Error(`wallet "${walletKey}" not configured`);
+  return payFromWallet({ ...ctx, rpcUrl: ctx.config.rpcUrl }, url, { ref, agent: privateKeyToAccount(ctx.config.agentKey), walletKey }, approvedFor);
+}
+
+export type PayerContext = Omit<PayContext, "config"> & { rpcUrl: string };
+/** `walletKey` names a daemon wallet so a HOLD can be queued and paid later; without it a HOLD is only recorded. */
+export type Payer = { ref: WalletRef; agent: Account | Address; walletKey?: "default" | "risky" };
+
+/** The screened x402 pay loop for one permission: request, screen and decide, approve on-chain, pay, record. */
+export async function payFromWallet(ctx: PayerContext, url: string, payer: Payer, approvedFor?: Approval): Promise<Decision> {
+  const { ref, walletKey } = payer;
   const base = { url, wallet: ref.wallet, permissionId: ref.permissionId.toString() };
-  const gateway = createWalletGateway(ctx.config.rpcUrl, ctx.config.agentKey, ref);
+  const gateway = createWalletGateway(ctx.rpcUrl, payer.agent, ref);
 
   let seen: { verdict: Verdict; auth: Authorization; approveTx?: Hex; payee?: Decision["payee"] } | undefined;
   const signer = createGuardedSigner({
@@ -69,7 +80,7 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
         return ctx.store.addDecision({ ...base, ...detail(), status: "failed", error: error instanceof Error ? error.message : String(error) });
       }
       const decision = ctx.store.addDecision({ ...base, ...detail(), status: error.verdict.kind === "HOLD" ? "held" : "refused" });
-      if (error.verdict.kind === "HOLD" && seen) {
+      if (error.verdict.kind === "HOLD" && seen && walletKey) {
         const hold = ctx.store.addHold({
           decisionId: decision.id, url, walletKey, payTo: seen.auth.to, amount: seen.auth.value.toString(), reasons: error.verdict.reasons
         });
@@ -86,7 +97,8 @@ export async function payUrl(ctx: PayContext, url: string, walletKey: "default" 
     if (paid.status === 200) {
       const settlement = paid.headers.get("PAYMENT-RESPONSE");
       const settleTx = settlement ? decodePaymentResponseHeader(settlement).transaction : undefined;
-      return ctx.store.addDecision({ ...base, ...detail(), status: "settled", settleTx });
+      const resource = await paid.json().catch(() => undefined);
+      return ctx.store.addDecision({ ...base, ...detail(), status: "settled", settleTx, resource });
     }
     const rejection = paid.headers.get("PAYMENT-REQUIRED");
     const reason = rejection ? decodePaymentRequiredHeader(rejection).error : undefined;

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { privateKeyToAccount } from "viem/accounts";
 import { createInterceptaClient, createProfiler } from "@eaw/risk";
 import { loadAgentConfig } from "./config";
 import { createDaemonHandler } from "./daemon-handler";
@@ -14,7 +15,7 @@ const handler = createDaemonHandler({
   profiler: createProfiler(client),
   store: createStore(),
   pay: payUrl,
-  walletStatus: ref => createWalletGateway(config.rpcUrl, config.agentKey, ref).readStatus()
+  walletStatus: ref => createWalletGateway(config.rpcUrl, privateKeyToAccount(config.agentKey), ref).readStatus()
 });
 
 createServer(handler).listen(config.port, "127.0.0.1", () => console.log(`agent daemon on http://127.0.0.1:${config.port}`));

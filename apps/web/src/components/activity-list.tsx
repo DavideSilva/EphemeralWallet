@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Ban, BadgeCheck, Hourglass, ShieldX, ShoppingBag, Stamp, Undo2 } from "lucide-react";
 import type { Activity, Card } from "@/lib/data";
-import { dayLabel, eth, shortAddress, time } from "@/lib/format";
+import { amount as formatAmount, dayLabel, money, shortAddress, time, unit } from "@/lib/format";
 import { useMerchants } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
@@ -74,7 +74,12 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
 
   const title = {
     issued: `Issued a ${kindLabel} card for ${merchant}`,
-    purchase: `Bought ${item.summary ?? "an item"} at ${merchant}`,
+    purchase:
+      item.payment === "pending"
+        ? `Paying for ${item.summary ?? "an item"} at ${merchant}`
+        : item.payment === "lapsed"
+          ? `Payment not collected: ${item.summary ?? "an item"} at ${merchant}`
+          : `Bought ${item.summary ?? "an item"} at ${merchant}`,
     blocked: held
       ? held.state === "waiting"
         ? "Held: waiting for your approval"
@@ -93,19 +98,25 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
     item.kind === "blocked"
       ? `Agent tried ${item.summary ?? "a purchase"} at ${merchant}`
       : item.kind === "cancelled" && item.value
-        ? `${eth(item.value)} ETH refunded`
+        ? `${money(item.value, item.asset)} refunded`
         : item.kind === "issued" && item.value !== undefined
-          ? `Budget ${eth(item.value)} ETH`
-          : undefined;
+          ? `Budget ${money(item.value, item.asset)}`
+          : item.payment === "pending"
+            ? "Approved by the card, waiting for the seller to collect"
+            : item.payment === "lapsed"
+              ? "The seller never collected it, so no USDC left your account. The card still counts it as spent."
+              : undefined;
 
   const amount =
     item.value === undefined || item.kind === "issued"
       ? null
       : item.kind === "purchase"
-        ? `−${eth(item.value)}`
+        ? item.payment === "lapsed"
+          ? formatAmount(item.value, item.asset)
+          : `−${formatAmount(item.value, item.asset)}`
         : item.kind === "blocked" || item.kind === "approved"
-          ? eth(item.value)
-          : `+${eth(item.value)}`;
+          ? formatAmount(item.value, item.asset)
+          : `+${formatAmount(item.value, item.asset)}`;
 
   const row = (
     <div className="grid grid-cols-[2.75rem_1.75rem_1fr_auto] items-start gap-x-3 py-3.5">
@@ -135,11 +146,12 @@ function ActivityRow({ item, card, showCard }: { item: Activity; card?: Card; sh
             "pt-0.5 text-right font-medium whitespace-nowrap",
             blocked && "text-void/70",
             held && "text-amber-800/80",
+            item.payment === "lapsed" && "text-muted-foreground",
             (item.kind === "refund" || item.kind === "cancelled") && "text-banknote",
           )}
         >
-          <span className={cn(blocked && "line-through")}>{amount}</span>{" "}
-          <span className="text-xs text-muted-foreground">ETH</span>
+          <span className={cn((blocked || item.payment === "lapsed") && "line-through")}>{amount}</span>{" "}
+          <span className="text-xs text-muted-foreground">{unit(item.asset)}</span>
         </span>
       )}
     </div>

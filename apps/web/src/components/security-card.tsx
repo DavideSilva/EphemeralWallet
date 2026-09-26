@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { Card } from "@/lib/data";
 import { zeroAddress } from "viem";
-import { eth, serial, shortAddress, validity } from "@/lib/format";
+import { amount, eth, serial, shortAddress, unit, validity } from "@/lib/format";
 import { useMerchant } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { Guilloche } from "./guilloche";
@@ -14,7 +14,7 @@ const themes = {
 
 export type CardFace = Pick<
   Card,
-  "id" | "kind" | "merchant" | "maxSpend" | "spent" | "maxUses" | "uses" | "expiresAt" | "status" | "approvalThreshold" | "approvalBy"
+  "id" | "kind" | "merchant" | "asset" | "maxSpend" | "spent" | "maxUses" | "uses" | "expiresAt" | "status" | "approvalThreshold" | "approvalBy"
 >;
 
 export function SecurityCard({
@@ -64,8 +64,10 @@ export function SecurityCard({
           <div className="flex items-end justify-between gap-3">
             <div>
               <div className={cn("font-display leading-none", size === "lg" ? "text-3xl" : "text-xl")}>
-                {inactive ? eth(card.spent) : eth(left)}{" "}
-                <span className="text-[0.6em]">{inactive ? "ETH spent" : "ETH left"}</span>
+                {amount(inactive ? card.spent : left, card.asset)}{" "}
+                <span className="text-[0.6em]">
+                  {unit(card.asset)} {inactive ? "spent" : "left"}
+                </span>
               </div>
               <div className="mt-1.5 text-[0.72rem] opacity-80">{statusLine(card)}</div>
             </div>

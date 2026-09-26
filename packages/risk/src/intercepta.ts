@@ -88,7 +88,8 @@ const jsonReplacer = (_key: string, value: unknown) => (typeof value === "bigint
 
 export function createInterceptaClient(opts: Options): InterceptaClient {
   const baseUrl = opts.baseUrl ?? "https://api.web3antivirus.io";
-  const timeoutMs = opts.timeoutMs ?? 5000;
+  // deep-scan (toxic-score) can take over 5 s on flagged addresses; a timeout still fails closed.
+  const timeoutMs = opts.timeoutMs ?? 10_000;
   const doFetch = opts.fetchImpl ?? fetch;
 
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;

@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 export type CatalogItem = { name: string; price: bigint };
+/** How catalog prices are denominated: ETH in wei for shop contracts, USDC (6 decimals) for x402 sellers. */
+export type Currency = { symbol: string; decimals: number };
+export const ETH: Currency = { symbol: "ETH", decimals: 18 };
 
 export type Plan =
   | { action: "purchase"; itemId: number; quantity: number; reason: string; planner: string }
@@ -25,11 +28,12 @@ Choose the single catalog item and quantity that best carries out the task, exac
 You are not told your spending limits; the card you pay with enforces them, so do not shrink the order to guess at a budget.
 Decline only when nothing in the catalog fits the task.`;
 
-function catalogText(merchant: string, items: CatalogItem[]) {
-  return items.map((item, i) => `${i}. ${item.name} (${Number(item.price) / 1e18} ETH)`).join("\n") + `\nMerchant: ${merchant}`;
+function catalogText(merchant: string, items: CatalogItem[], currency: Currency) {
+  const price = (value: bigint) => `${Number(value) / 10 ** currency.decimals} ${currency.symbol}`;
+  return items.map((item, i) => `${i}. ${item.name} (${price(item.price)})`).join("\n") + `\nMerchant: ${merchant}`;
 }
 
-export async function planWithClaude(goal: string, merchant: string, items: CatalogItem[]): Promise<Plan> {
+export async function planWithClaude(goal: string, merchant: string, items: CatalogItem[], currency = ETH): Promise<Plan> {
   const client = new Anthropic();
   const response = await client.beta.messages.create({
     model: MODEL,
@@ -38,7 +42,7 @@ export async function planWithClaude(goal: string, merchant: string, items: Cata
     fallbacks: "default",
     output_config: { effort: "low", format: { type: "json_schema", schema: planSchema } },
     system,
-    messages: [{ role: "user", content: `Catalog:\n${catalogText(merchant, items)}\n\nTask: ${goal}` }],
+    messages: [{ role: "user", content: `Catalog:\n${catalogText(merchant, items, currency)}\n\nTask: ${goal}` }],
   });
 
   if (response.stop_reason === "refusal") {

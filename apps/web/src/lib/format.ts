@@ -1,8 +1,23 @@
-import { formatEther } from "viem";
+import { formatEther, formatUnits, zeroAddress, type Address } from "viem";
 
 export function eth(value: bigint, digits = 4): string {
   const n = Number(formatEther(value));
   return n.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+}
+
+/** Cards and prices are in ETH (no asset, or the zero address) or in a 6-decimal token: USDC for x402 sellers. */
+export function unit(asset?: Address): string {
+  return asset && asset !== zeroAddress ? "USDC" : "ETH";
+}
+
+/** The number only, in the asset's own decimals. */
+export function amount(value: bigint, asset?: Address, digits = 4): string {
+  if (unit(asset) === "ETH") return eth(value, digits);
+  return Number(formatUnits(value, 6)).toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+}
+
+export function money(value: bigint, asset?: Address, digits = 4): string {
+  return `${amount(value, asset, digits)} ${unit(asset)}`;
 }
 
 export function shortAddress(address: string): string {

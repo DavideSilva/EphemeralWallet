@@ -13,7 +13,8 @@ import { foundry } from "viem/chains";
 import { approvalHookAbi, merchantAbi, missionWalletAbi, reusableWalletAbi } from "../../../packages/shared/src/abis";
 import { decodeRevert, describeRevert, revertData } from "../../../packages/shared/src/revert";
 import { APPROVAL_WAIT_SECONDS } from "../../../packages/shared/src/approval";
-import { planOffline, planWithClaude, type Plan } from "./planner";
+import { ETH, planOffline, planWithClaude, type Currency, type Plan } from "./planner";
+import { buyOverX402, findSeller, USDC } from "./x402-card";
 
 try {
   process.loadEnvFile(new URL("../../../.env", import.meta.url));
@@ -43,7 +44,8 @@ const chainId = await createPublicClient({ transport: http(rpc) }).getChainId();
 const chain = chainId === foundry.id ? foundry : { ...foundry, id: chainId, name: `Local fork (${chainId})` };
 const publicClient = createPublicClient({ chain, transport: http(rpc) });
 
-type Limits = { agent: Address; merchant: Address; left: bigint; usesLeft: number; expiresAt: bigint; status: string };
+/** `asset` is zero for ETH cards that buy from shop contracts, otherwise the token (USDC) an x402 card pays in. */
+type Limits = { agent: Address; merchant: Address; asset: Address; left: bigint; usesLeft: number; expiresAt: bigint; status: string };
 
 async function readCard(): Promise<Limits> {
   if (permissionId === undefined) {
@@ -55,6 +57,7 @@ async function readCard(): Promise<Limits> {
     return {
       agent: agent as Address,
       merchant: merchant as Address,
+      asset: zeroAddress,
       left: used ? 0n : (maxSpend as bigint),
       usesLeft: used ? 0 : 1,
       expiresAt: expiresAt as bigint,
@@ -68,10 +71,10 @@ async function readCard(): Promise<Limits> {
     args: [permissionId],
   });
   if (agent === zeroAddress) throw new Error("No such multi-use card");
-  if (asset !== zeroAddress) throw new Error("That permission pays x402 services in USDC; it isn't a merchant card");
   return {
     agent,
     merchant,
+    asset,
     left: maxSpend - spent,
     usesLeft: maxUses - uses,
     expiresAt,
@@ -79,10 +82,10 @@ async function readCard(): Promise<Limits> {
   };
 }
 
-async function plan(merchant: string, items: { name: string; price: bigint }[]): Promise<Plan> {
+async function plan(merchant: string, items: { name: string; price: bigint }[], currency: Currency = ETH): Promise<Plan> {
   if (process.env.AGENT_PLANNER === "offline") return planOffline(goal, items);
   try {
-    return await planWithClaude(goal, merchant, items);
+    return await planWithClaude(goal, merchant, items, currency);
   } catch (error) {
     const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
     const reason = /authentication method/i.test(message) ? "no Anthropic credentials found" : message;
@@ -95,6 +98,30 @@ const card = await readCard().catch(() => {
   console.error(`No card found at ${cardArg} on ${rpc}. Is the demo running, and is the number right?`);
   process.exit(1);
 });
+if (card.asset !== zeroAddress) process.exit(await payX402Seller());
+
+/** A USDC card pays an x402 seller: the agent plans, then every payment is screened before the card approves it. */
+async function payX402Seller(): Promise<number> {
+  const seller = await findSeller(card.merchant);
+  if (!seller) {
+    console.error(`No x402 seller answering for ${card.merchant}. Is the weather service running (npm run demo starts it)?`);
+    return 1;
+  }
+  console.log(`Card    ${cardArg}`);
+  console.log(`Task    ${goal}`);
+  console.log(`Seller  ${seller.name} (x402, ${seller.url})`);
+  console.log("Planning...");
+  const decision = await plan(seller.name, seller.items, USDC);
+  if (decision.action === "decline") {
+    console.log(`Declined by the agent (${decision.planner}): ${decision.reason}`);
+    return 0;
+  }
+  const item = seller.items[decision.itemId];
+  console.log(`Plan    ${decision.quantity} × ${item.name} at ${Number(item.price) / 1e6} USDC each (${decision.planner})`);
+  console.log(`        ${decision.reason}`);
+  return buyOverX402({ rpcUrl: rpc, wallet, permissionId: permissionId!, agent: card.agent, seller, plan: decision });
+}
+
 const [merchantName, catalog] = await Promise.all([
   publicClient.readContract({ address: card.merchant, abi: merchantAbi, functionName: "name" }),
   publicClient.readContract({ address: card.merchant, abi: merchantAbi, functionName: "items" }),
