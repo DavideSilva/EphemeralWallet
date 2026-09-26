@@ -1,0 +1,8 @@
+{
+  "name": "ephemeral-agent-wallet",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "agent": "npm --workspace @eaw/agent run start"
+  }
+}
