@@ -115,6 +115,9 @@ A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts impleme
 - Per purchase: the threshold applies to each purchase on its own. Splitting a large order into small ones is not
   caught; only the card's budget and uses bound it.
 - A fake wallet can only approve requests keyed by its own address.
+- An approval recorded before `transferOwnership` stays usable until it expires (at most a day), like the permission
+  itself. The config is fixed, so a config that isn't exactly one word (owner mode) or four words (passkey mode) can
+  never be approved; the app only builds those two shapes.
 
 ## Factories
 
