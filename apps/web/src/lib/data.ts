@@ -431,7 +431,7 @@ export async function fetchSnapshot(owner: Address, merchants: Merchant[]): Prom
     merchants,
     targetOf,
   );
-  activity.push(...(await withApprovals(blocked, activity, account, toBlock, now)));
+  activity.push(...(await withApprovals(blocked, activity, account, toBlock)));
 
   activity.sort((a, b) => (a.block === b.block ? b.position - a.position : a.block > b.block ? -1 : 1));
   cards.sort((a, b) => {
@@ -456,10 +456,13 @@ async function withApprovals(
   activity: Activity[],
   account: Address | null,
   toBlock: bigint,
-  now: number,
 ): Promise<Activity[]> {
   const hook = approvalHook();
   if (!hook || !account || !blocked.some(b => b.held)) return blocked;
+
+  // The chain's "now" (the pending block's time), not this computer's clock: held rows carry block times, and a
+  // local chain's time can be moved ahead (evm_increaseTime) or sit idle without new blocks.
+  const now = Number((await publicClient.getBlock({ blockTag: "pending" })).timestamp);
 
   const events = await publicClient.getContractEvents({
     address: hook,
