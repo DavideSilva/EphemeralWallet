@@ -89,25 +89,28 @@ Known limitations:
 
 ## Mode B — plugins
 
-A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts implementing `IPermissionHook.beforeExecute`.
+A permission can carry up to 4 plugins ("hooks"): contracts implementing `IPermissionHook.beforeExecute`. They run on
+native purchases (`execute`) and on token payments (`approvePayment`).
 
 - `createPermissionWithHooks(agent, allowedTarget, maxSpend, expiresAt, maxUses, asset, hooks)`: owner only. Each hook
-  is `{hook, config}`; `config` is that plugin's settings for this permission. Rejected: a token permission
-  (`HooksNeedNativePermission`), a hook with no code (`InvalidHook`), the same hook twice (`DuplicateHook`), more than 4
-  (`TooManyHooks`). `HookAttached(permissionId, hook, config)` is emitted per hook; `hooksOf(permissionId)` lists them.
+  is `{hook, config}`; `config` is that plugin's settings for this permission. Rejected: a hook with no code
+  (`InvalidHook`), the same hook twice (`DuplicateHook`), more than 4 (`TooManyHooks`). `HookAttached(permissionId, hook, config)` is emitted per hook; `hooksOf(permissionId)` lists them.
 - Plugins are fixed at creation. To change the rules, revoke the permission and issue a new one.
 - `execute` order: built-in checks and consumption (`_consume`), native and target checks, every plugin's
   `beforeExecute` in order, the merchant call. A plugin holds the purchase by reverting; the wallet wraps the reason as
   `HookRejected(hook, reason)` so a plugin can't pass off one of the wallet's own errors, and the whole purchase
   (including consumption) is rolled back.
-- `approvePayment` (x402) does not run plugins.
-- `execute` can't be re-entered (`Reentered`), so plugins run once per purchase.
+- `approvePayment` order: `_consume`, the token/payee/window/nonce checks, the digest computation, every plugin's
+  `beforeExecute` with `target = payTo`, `value = amount`, `data = ""` (a payment is "pay this payee this amount", not
+  one nonce), then the digest and nonce are recorded. A plugin rejection rolls all of it back.
+- Neither `execute` nor `approvePayment` can be re-entered (`Reentered`), so plugins run once per purchase or payment.
 - Trust model: plugins are code the owner chose. They are called with the wallet as `msg.sender`, key their state by
   `(msg.sender, permissionId)`, and must not call back into the wallet.
 
 ### Approval plugin (`ApprovalHook`)
 
-- Config: `abi.encode(uint256 threshold)` in wei. A purchase with `value <= threshold` passes. A larger one is held
+- Config: `abi.encode(uint256 threshold)`, in the permission's asset units (wei for ETH cards, 6-decimal units for
+  USDC). A purchase with `value <= threshold` passes. A larger one is held
   with `ApprovalRequired(requestKey)` unless the owner approved that exact purchase.
 - `requestKey = keccak256(abi.encode(wallet, permissionId, target, value, keccak256(data)))`, exposed as `requestKey(...)`.
 - `approve(wallet, permissionId, target, value, data, validUntil)`: the wallet's current owner only; the plugin must be
@@ -127,6 +130,12 @@ A native (ETH) permission can carry up to 4 plugins ("hooks"): contracts impleme
   nonces[requestKey], validUntil))`; it must have user verification, `authenticatorData[0:32] == rpIdHash`, and a
   low-s signature, verified with the P-256 precompile (`0x100`). Each passkey approval bumps `nonces[requestKey]`, so a
   signature can't be replayed. The origin in `clientDataJSON` is not checked; `rpIdHash` binds the passkey to one site.
+- Unknown-payee rule (x402 payments): config `abi.encode(threshold, x, y, rpIdHash, flags)` with
+  `UNKNOWN_PAYEES_NEED_APPROVAL` (bit 0) set. Then a payment to a payee that isn't `knownPayee[wallet][permissionId]`
+  needs a passkey approval whatever the amount, as well as any payment over the threshold. A payee becomes known only
+  when an approved payment to it goes through (`PayeeKnown`); nothing else adds to the set. So an agent key alone can't
+  pay a new address (including its own), and can pay known payees at most `threshold` per payment within the budget.
+  `needsApproval(wallet, permissionId, target, value)` tells the agent in advance.
 - The plugin's constructor requires the P-256 precompile (or solady's fallback verifier), so both demo scripts start
   Anvil with `--hardfork osaka` (a fork of Base Sepolia doesn't get the precompile otherwise).
 
