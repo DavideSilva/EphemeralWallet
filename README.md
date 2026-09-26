@@ -60,6 +60,27 @@ Planning uses Claude (`claude-opus-5`) when Anthropic credentials are available,
 
 The agent isn't told its limits and sends over-limit orders anyway, so the card is the one that says no. Rejected attempts are mined as reverts and show up in the app's activity as **Blocked**, with the reason.
 
+### Touch ID for big purchases
+
+A multi-use card can carry plugins that run before every purchase (see `SPEC.md`, "Mode B — plugins"). The first one,
+`ApprovalHook`, holds any single purchase above a threshold until you approve that exact purchase:
+
+1. Open the app at `http://localhost:5173` (not `127.0.0.1`: passkeys don't work on IP addresses).
+2. Issue a multi-use card and fill in **Needs my approval above**, say `0.005`. Leave **Approve with Touch ID** on; the
+   first time, the browser asks you to create a passkey. The card shows "Touch ID over 0.005 ETH".
+3. `npm run agent -- <card> "buy one concert ticket"` goes through on its own.
+4. `npm run agent -- <card> "buy 3 concert tickets"` is **Held**. The agent waits (up to 5 minutes) and the card page
+   shows the purchase, decoded from the agent's order, with **Approve with Touch ID**.
+5. Touch the sensor. The signature is checked on-chain, the agent retries the same order, and it's **Bought**. Activity
+   reads *Held → You approved with Touch ID → Bought*.
+
+An approval covers that one purchase, once, for an hour. The app's own account can't approve a Touch ID card; only the
+passkey can. Untick **Approve with Touch ID** to have the owner account approve instead (no passkey needed). The
+threshold applies per purchase, so an order split into small ones isn't held; the card's budget and uses still cap it.
+
+The passkey is kept in your browser's keychain, and its id and public key in this browser's local storage, so approve
+in the browser you issued the card from. **Use a new passkey** on the issue form starts over.
+
 ## Safe agent-to-agent payments (x402 + Intercepta)
 
 Agents pay x402 services in USDC on Base Sepolia from a `ReusablePermissionWallet`. Every payment is screened live by
@@ -194,7 +215,7 @@ It runs on the public testnet with no screening or wallet contracts: each report
 ## Structure
 
 - `SPEC.md`: source of truth for contract behavior
-- `packages/contracts`: wallets, factories, demo merchants, tests and deployment scripts (`Deploy.s.sol`, `DeployX402.s.sol`)
+- `packages/contracts`: wallets, factories, the plugin interface and `ApprovalHook`, demo merchants, tests and deployment scripts (`Deploy.s.sol`, `DeployX402.s.sol`)
 - `packages/shared`: ABIs and revert decoding shared by the app and the agent
 - `packages/risk`: Intercepta API client, wallet/counterparty profiling, PAY/CAP/HOLD/REFUSE policy (`@eaw/risk`)
 - `apps/agent`: agent CLI with the Claude and offline planners; also the x402 pay loop, hold queue and daemon API (`src/x402/`)

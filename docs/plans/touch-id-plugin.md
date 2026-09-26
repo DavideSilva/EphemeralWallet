@@ -1,6 +1,6 @@
 # Plan: card plugins + "Touch ID for big buys"
 
-Status: **revised after review, not yet implemented.** Delivered as a stack of small PRs (see [PR stack](#pr-stack)).
+Status: **implemented** in the PR stack below. User-facing docs: `README.md` ("Touch ID for big purchases") and `SPEC.md` ("Mode B — plugins").
 
 ## Goal
 
@@ -193,6 +193,15 @@ Each PR targets the one before it, so each is small and reviewable on its own.
 - Declining without reverting ("soft deny"): only needed for plugins that must remember a blocked attempt.
 - An extra `hookData` argument on `execute`: the approval travels on-chain through `approve()`.
 - `afterExecute`, other plugins, hiding limits from the agent, hardware.
+
+## Deviations from this plan
+
+- solady is installed in PR 5 (where it is first used) rather than PR 1, together with `--hardfork osaka` for the Base
+  Sepolia fork. Plain Anvil already has the P-256 precompile, so `demo.mjs` needed no hardfork flag.
+- The approval plugin keeps both modes: threshold-only config means the owner account approves (Stage A), a config with
+  a passkey means only the passkey can (Stage B). The app defaults to Touch ID when the browser supports passkeys.
+- Verification used headless Chromium with a CDP virtual authenticator in place of Touch ID; a physical Touch ID run on
+  the presenting Mac is still on the checklist below.
 
 ## Stage checklist
 
