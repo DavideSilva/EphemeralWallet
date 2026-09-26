@@ -171,13 +171,14 @@ If the web app crashes on start after pulling (for example a React version error
 
 ## Mount Fuji weather over x402
 
-A mock web service that sells a Mount Fuji weather report behind [x402](https://x402.org). Set `WEATHER_PAY_TO` to the address that receives payments, then:
+A mock web service that sells a Mount Fuji weather report behind [x402](https://x402.org). Set `WEATHER_PAY_TO` in `.env` to the address that receives payments, then:
 
 ```bash
 npm run weather
+curl -i http://localhost:4021/weather/mount-fuji   # 402 Payment Required
 ```
 
-`GET http://localhost:4021/weather/mount-fuji` answers `402 Payment Required` until the request carries an x402 payment of $0.01 in USDC on Base Sepolia, settled through the public facilitator at `https://x402.org/facilitator`. Any x402 client can pay it. The report is mock data. `WEATHER_PRICE`, `WEATHER_NETWORK`, `WEATHER_FACILITATOR_URL` and `WEATHER_PORT` override the defaults.
+Unlike the demo above, this runs on a public testnet: each report costs $0.01 in USDC on Base Sepolia, settled through the public facilitator at `https://x402.org/facilitator`. To make a paid request, use any x402 client (for example [`@x402/fetch`](https://www.npmjs.com/package/@x402/fetch)) with a wallet holding Base Sepolia USDC from the [Circle faucet](https://faucet.circle.com). The report is random mock data. `WEATHER_PORT` changes the port.
 
 ## Structure
 
