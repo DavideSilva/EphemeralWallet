@@ -156,8 +156,9 @@ function IssueCard() {
     onSuccess: async cardId => {
       if (goal.trim()) saveGoal(cardId, goal.trim());
       if (screening.data) saveScreening(cardId, screening.data);
-      setConfirming(false);
-      await queryClient.invalidateQueries({ queryKey: ["snapshot"] });
+      // This route has no snapshot observer, so invalidating alone leaves the previous (often empty) snapshot in cache.
+      // Keep the issuing dialog open until the refreshed snapshot can render the new card.
+      await queryClient.refetchQueries({ queryKey: ["snapshot"], type: "all" });
       toast.success("Card issued");
       navigate({ to: "/cards/$cardId", params: { cardId } });
     },
