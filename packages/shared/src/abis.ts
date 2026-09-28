@@ -382,7 +382,6 @@ export const reusableWalletAbi = [
   { type: "error", name: "InvalidHook", inputs: [] },
   { type: "error", name: "DuplicateHook", inputs: [] },
   { type: "error", name: "TooManyHooks", inputs: [] },
-  { type: "error", name: "HooksNeedNativePermission", inputs: [] },
   {
     type: "error",
     name: "HookRejected",
@@ -552,6 +551,45 @@ export const approvalHookAbi = [
   { type: "error", name: "PasskeyRequired", inputs: [] },
   { type: "error", name: "NoPasskey", inputs: [] },
   { type: "error", name: "InvalidPasskeySignature", inputs: [] },
+  {
+    type: "function",
+    name: "needsApproval",
+    stateMutability: "view",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "target", type: "address" },
+      { name: "value", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "knownPayee",
+    stateMutability: "view",
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "permissionId", type: "uint256" },
+      { name: "payee", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "UNKNOWN_PAYEES_NEED_APPROVAL",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "PayeeKnown",
+    inputs: [
+      { indexed: true, name: "wallet", type: "address" },
+      { indexed: true, name: "permissionId", type: "uint256" },
+      { indexed: true, name: "payee", type: "address" },
+    ],
+  },
   { type: "error", name: "NotWalletOwner", inputs: [] },
   { type: "error", name: "NotAttached", inputs: [] },
   { type: "error", name: "InvalidExpiry", inputs: [] },
