@@ -68,8 +68,8 @@ A permission with a non-zero `asset` lets the agent pay x402 services from the w
 - `allowedTarget` is the only payee, or `address(0)` for any payee (the agent's screening decides who).
 - `approvePayment(permissionId, payTo, amount, validAfter, validBefore, nonce)`: agent only. Applies every check above
   (budget, uses, expiry, revoked) plus: token permission only, `payTo != address(0)`, payee matches if pinned, a
-  window that can settle now (`validAfter < validBefore` and `validBefore > block.timestamp`, else
-  `InvalidAuthorizationWindow`), `validBefore <= expiresAt`, and a nonce not already approved by any permission. Spend and uses are consumed here, before any signature exists. The wallet computes the
+  window that can settle now (`validAfter < validBefore`, `validAfter <= block.timestamp` and
+  `validBefore > block.timestamp`, else `InvalidAuthorizationWindow`), `validBefore <= expiresAt`, and a nonce not already approved by any permission. Spend and uses are consumed here, before any signature exists. The wallet computes the
   exact EIP-712 digest on-chain (from the token's `DOMAIN_SEPARATOR`, `from = address(this)`) and records it in
   `approvedDigest`; `approvedNonce[nonce] = permissionId + 1` lets a payee find the approving agent.
 - `isValidSignature(hash, signature)` (ERC-1271) returns the magic value only for an approved digest. The signature bytes

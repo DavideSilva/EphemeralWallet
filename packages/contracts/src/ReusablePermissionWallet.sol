@@ -228,7 +228,10 @@ contract ReusablePermissionWallet {
         if (permission.asset == address(0)) revert NotTokenPermission();
         if (payTo == address(0)) revert InvalidTarget();
         if (permission.allowedTarget != address(0) && payTo != permission.allowedTarget) revert InvalidTarget();
-        if (validAfter >= validBefore || validBefore <= block.timestamp) revert InvalidAuthorizationWindow();
+        // A future validAfter would consume budget now for a payment USDC won't settle until later.
+        if (validAfter >= validBefore || validAfter > block.timestamp || validBefore <= block.timestamp) {
+            revert InvalidAuthorizationWindow();
+        }
         if (validBefore > permission.expiresAt) revert AuthorizationOutlivesPermission();
         if (approvedNonce[nonce] != 0) revert NonceAlreadyApproved();
 

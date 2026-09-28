@@ -265,6 +265,9 @@ contract ReusablePermissionWalletTest is Test {
         vm.expectRevert(ReusablePermissionWallet.InvalidAuthorizationWindow.selector);
         wallet.approvePayment(id, payee, 0.1e6, block.timestamp + 5 minutes, block.timestamp + 4 minutes, keccak256("inverted"));
 
+        vm.expectRevert(ReusablePermissionWallet.InvalidAuthorizationWindow.selector);
+        wallet.approvePayment(id, payee, 0.1e6, block.timestamp + 1, block.timestamp + 10 minutes, keccak256("future"));
+
         vm.expectRevert(ReusablePermissionWallet.InvalidTarget.selector);
         wallet.approvePayment(id, address(0), 0.1e6, 0, block.timestamp + 10 minutes, keccak256("zero"));
         vm.stopPrank();
